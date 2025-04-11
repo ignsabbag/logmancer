@@ -1,0 +1,12 @@
+[package]
+name = "logmancer-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crossterm = "0.29.0"
+logmancer-core = { path = "../logmancer-core" }
+
+[[bin]]
+name = "logmancer-cli"
+path = "src/main.rs"
