@@ -21,7 +21,7 @@ fn main() -> std::io::Result<()> {
     }
     let filepath = &args[1];
 
-    let mut reader = match PagedFileReader::new(filepath) {
+    let mut reader = match PagedFileReader::from(filepath.to_string()) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("Error al abrir el archivo: {}", e);
@@ -44,8 +44,11 @@ fn main() -> std::io::Result<()> {
         execute!(stdout, cursor::MoveTo(0, 0), terminal::Clear(terminal::ClearType::All))?;
 
         let page_result: PageResult = if follow_mode {
-            match reader.tail(page_size) {
-                Ok(pr) => pr,
+            match reader.tail(page_size, false) {
+                Ok(pr) => {
+                    current_offset = pr.start_line;
+                    pr
+                },
                 Err(e) => {
                     eprintln!("Error al leer tail: {}", e);
                     break;
@@ -72,17 +75,17 @@ fn main() -> std::io::Result<()> {
                 trunc_str(line.trim_end(), (columns - 7) as usize));
         }
 
-        let event = if follow_mode {
-            if event::poll(time::Duration::from_millis(500))? {
-                Some(event::read()?)
-            } else {
-                None
-            }
-        } else {
-            Some(event::read()?)
-        };
-
-        if let Some(evt) = event {
+        // let event = if follow_mode {
+        //     if event::poll(time::Duration::from_millis(500))? {
+        //         Some(event::read()?)
+        //     } else {
+        //         None
+        //     }
+        // } else {
+        //     Some(event::read()?)
+        // };
+        let event = Some(event::read()?);
+            if let Some(evt) = event {
             if let Event::Key(key_event) = evt {
                 match key_event.code {
                     KeyCode::Char('q') => break,
