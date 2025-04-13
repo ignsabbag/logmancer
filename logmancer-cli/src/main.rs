@@ -32,19 +32,24 @@ fn main() -> std::io::Result<()> {
     terminal::enable_raw_mode()?;
     let mut stdout = stdout();
 
-    let mut page_size: usize;
+    let mut page_size: usize = 20;
     let mut current_offset: usize = 0;
     let mut follow_mode = false; // false: navegación normal; true: modo tail (seguimiento)
 
     loop {
 
         let (columns, rows) = terminal::size()?;
-        page_size = (rows.saturating_sub(2) - 2) as usize;
+        if rows > 2 && columns > 7 {
+            page_size = (rows.saturating_sub(2) - 2) as usize;
+        } else {
+            // In debug, sometimes columns and rows are 0
+            continue;
+        }
 
         execute!(stdout, cursor::MoveTo(0, 0), terminal::Clear(terminal::ClearType::All))?;
 
         let page_result: PageResult = if follow_mode {
-            match reader.tail(page_size, false) {
+            match reader.tail(page_size, follow_mode) {
                 Ok(pr) => {
                     current_offset = pr.start_line;
                     pr
@@ -75,17 +80,16 @@ fn main() -> std::io::Result<()> {
                 trunc_str(line.trim_end(), (columns - 7) as usize));
         }
 
-        // let event = if follow_mode {
-        //     if event::poll(time::Duration::from_millis(500))? {
-        //         Some(event::read()?)
-        //     } else {
-        //         None
-        //     }
-        // } else {
-        //     Some(event::read()?)
-        // };
-        let event = Some(event::read()?);
-            if let Some(evt) = event {
+        let event = if follow_mode {
+            if event::poll(time::Duration::from_millis(500))? {
+                Some(event::read()?)
+            } else {
+                None
+            }
+        } else {
+            Some(event::read()?)
+        };
+        if let Some(evt) = event {
             if let Event::Key(key_event) = evt {
                 match key_event.code {
                     KeyCode::Char('q') => break,
@@ -99,7 +103,8 @@ fn main() -> std::io::Result<()> {
                     KeyCode::Up => {
                         if follow_mode {
                             follow_mode = false;
-                        } else if current_offset > 0 {
+                        }
+                        if current_offset > 0 {
                             current_offset -= 1;
                         }
                     }
@@ -112,9 +117,10 @@ fn main() -> std::io::Result<()> {
                         }
                     }
                     KeyCode::PageUp => {
-                        if !follow_mode {
-                            current_offset = current_offset.saturating_sub(page_size);
+                        if follow_mode {
+                            follow_mode = false;
                         }
+                        current_offset = current_offset.saturating_sub(page_size);
                     }
                     _ => {}
                 }
