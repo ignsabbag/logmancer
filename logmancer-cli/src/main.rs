@@ -54,8 +54,6 @@ fn main() -> std::io::Result<()> {
             continue;
         }
 
-        execute!(stdout, cursor::MoveTo(0, 0), terminal::Clear(terminal::ClearType::All))?;
-
         let result = if end_reached {
             reader.tail(page_size, follow_mode)
         } else {
@@ -72,10 +70,12 @@ fn main() -> std::io::Result<()> {
             }
         };
         end_reached = current_offset + page_size >= page_result.total_lines;
+        let index = page_result.indexing_progress * 100.0;
 
         // Header
-        print_row!(0, "File: {} | Total Lines: {} | Follow Mode: {}",
-            &args[1], page_result.total_lines, if follow_mode { "ON" } else { "OFF" });
+        execute!(stdout, cursor::MoveTo(0, 0), terminal::Clear(terminal::ClearType::All))?;
+        print_row!(0, "File: {} | Follow Mode: {} | Total Lines: {} ({:.2}% indexed)",
+            &args[1], if follow_mode { "ON" } else { "OFF" }, page_result.total_lines, index);
         print_row!(1, "{}", "-".repeat(columns as usize));
 
         // Lines
@@ -84,8 +84,9 @@ fn main() -> std::io::Result<()> {
                 trunc_str(line.trim_end(), (columns - 7) as usize));
         }
 
-        let event = if end_reached && follow_mode {
-            if event::poll(time::Duration::from_millis(500))? {
+        let polling = (end_reached && follow_mode) || index < 100.0;
+        let event = if polling {
+            if event::poll(time::Duration::from_millis(1000))? {
                 Some(event::read()?)
             } else {
                 None

@@ -7,6 +7,7 @@ pub struct PageResult {
     pub lines: Vec<String>,
     pub start_line: usize,
     pub total_lines: usize,
+    pub indexing_progress: f64
 }
 
 pub struct LogReader {
@@ -30,7 +31,11 @@ impl LogReader {
         for current_line in from_line..to_line {
             lines.push(read_ops.read_line(current_line)?);
         }
-        Ok(PageResult { lines, start_line: from_line, total_lines: read_ops.total_lines()? })
+        Ok(PageResult { lines,
+            start_line: from_line,
+            total_lines: read_ops.total_lines()?,
+            indexing_progress: read_ops.indexing_progress()?
+        })
     }
 
     // Reads the last `max_lines` lines from the file. If `follow` is true the file is reloaded
@@ -49,6 +54,7 @@ impl LogReader {
             lines,
             start_line,
             total_lines: read_ops.total_lines()?,
+            indexing_progress: read_ops.indexing_progress()?
         })
     }
 }

@@ -41,4 +41,13 @@ impl<'a> FileReadOps<'a> {
     pub fn total_lines(&self) -> io::Result<usize> {
         Ok(self.log_file.index.len())
     }
+
+    pub fn indexing_progress(&self) -> io::Result<f64> {
+        let file_size = self.log_file.mmap.len();
+        if file_size == 0 {
+            return Ok(1.0);
+        }
+        let indexed = *self.log_file.index.last().unwrap();
+        Ok(indexed as f64 / file_size as f64)
+    }
 }
