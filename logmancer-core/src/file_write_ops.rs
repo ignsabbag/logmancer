@@ -34,19 +34,24 @@ impl FileWriteOps {
 
     /// Indexes the next `max_bytes` bytes. Returns true unless the end of the file is reached.
     pub fn index_max(&mut self, max_bytes: usize) -> io::Result<bool> {
-        let mut file_lock = self.log_file.write().unwrap();
-        let start_pos = file_lock.index.last().unwrap();
-        let end_pos = min(file_lock.mmap.len(), *start_pos + max_bytes);
-        let end_reached = file_lock.mmap.len() <= *start_pos + max_bytes;
+        let (gap, end_reached) = self.index(max_bytes)?;
+        self.log_file.write().unwrap().index.extend(gap);
+        Ok(end_reached)
+    }
 
-        let mut new_index = Vec::new();
-        let content = &file_lock.mmap[*start_pos..end_pos];
+    fn index(&self, max_bytes: usize) -> io::Result<(Vec<usize>, bool)> {
+        let read_lock = self.log_file.write().unwrap();
+        let start_pos = read_lock.index.last().unwrap().clone();
+        let end_pos = min(read_lock.mmap.len(), start_pos + max_bytes);
+        let end_reached = read_lock.mmap.len() <= start_pos + max_bytes;
+        let content = &read_lock.mmap[start_pos..end_pos];
+
+        let mut index = Vec::new();
         for (pos, byte) in content.iter().enumerate() {
             if *byte == b'\n' {
-                new_index.push(start_pos + pos + 1);
+                index.push(start_pos + pos + 1);
             }
         }
-        file_lock.index.extend(new_index);
-        Ok(end_reached)
+        Ok((index, end_reached))
     }
 }
