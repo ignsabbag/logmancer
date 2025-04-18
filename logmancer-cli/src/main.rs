@@ -6,13 +6,15 @@ use crossterm::{
     event::{self, Event, KeyCode},
     execute, terminal,
 };
+use log::{debug, error, LevelFilter};
+use logmancer_core::LogReader;
 use std::env;
+use std::fs::{OpenOptions};
 use std::io::stdout;
 use std::{process, time};
 
-use logmancer_core::{PagedFileReader, PageResult};
-
 fn main() -> std::io::Result<()> {
+    setup_logging().expect("Failed to initialize logging");
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -21,20 +23,26 @@ fn main() -> std::io::Result<()> {
     }
     let filepath = &args[1];
 
-    let mut reader = match PagedFileReader::from(filepath.to_string()) {
+    terminal::enable_raw_mode()?;
+    std::panic::set_hook(Box::new(|panic_info| {
+        error!("{}", panic_info);
+        terminal::disable_raw_mode().unwrap();
+        process::exit(1);
+    }));
+
+    let mut reader = match LogReader::new(filepath.to_string()) {
         Ok(r) => r,
         Err(e) => {
-            eprintln!("Error al abrir el archivo: {}", e);
+            error!("Error opening file: {}", e);
             process::exit(1);
         }
     };
 
-    terminal::enable_raw_mode()?;
     let mut stdout = stdout();
-
-    let mut page_size: usize = 20;
+    let mut page_size: usize;
     let mut current_offset: usize = 0;
-    let mut follow_mode = false; // false: navegación normal; true: modo tail (seguimiento)
+    let mut follow_mode = false;
+    let mut end_reached = false;
 
     loop {
 
@@ -48,26 +56,22 @@ fn main() -> std::io::Result<()> {
 
         execute!(stdout, cursor::MoveTo(0, 0), terminal::Clear(terminal::ClearType::All))?;
 
-        let page_result: PageResult = if follow_mode {
-            match reader.tail(page_size, follow_mode) {
-                Ok(pr) => {
-                    current_offset = pr.start_line;
-                    pr
-                },
-                Err(e) => {
-                    eprintln!("Error al leer tail: {}", e);
-                    break;
-                }
-            }
+        let result = if end_reached {
+            reader.tail(page_size, follow_mode)
         } else {
-            match reader.read_page(current_offset, page_size) {
-                Ok(pr) => pr,
-                Err(e) => {
-                    eprintln!("Error al leer la página: {}", e);
-                    break;
-                }
+            reader.read_page(current_offset, page_size)
+        };
+        let page_result = match result {
+            Ok(page_result) => {
+                current_offset = page_result.start_line;
+                page_result
+            },
+            Err(e) => {
+                error!("Error reading file: {}", e);
+                break;
             }
         };
+        end_reached = current_offset + page_size >= page_result.total_lines;
 
         // Header
         print_row!(0, "File: {} | Total Lines: {} | Follow Mode: {}",
@@ -80,7 +84,7 @@ fn main() -> std::io::Result<()> {
                 trunc_str(line.trim_end(), (columns - 7) as usize));
         }
 
-        let event = if follow_mode {
+        let event = if end_reached && follow_mode {
             if event::poll(time::Duration::from_millis(500))? {
                 Some(event::read()?)
             } else {
@@ -94,32 +98,29 @@ fn main() -> std::io::Result<()> {
                 match key_event.code {
                     KeyCode::Char('q') => break,
                     KeyCode::Char('f') | KeyCode::Char('F') => follow_mode = !follow_mode,
+                    KeyCode::Char('g') => {
+                        end_reached = false;
+                        current_offset = 0;
+                    }
+                    KeyCode::Char('G') => {
+                        end_reached = true;
+                    }
                     KeyCode::Down => {
-                        let end_reached = current_offset + page_size >= page_result.total_lines;
-                        if !follow_mode && !end_reached {
+                        if !end_reached {
                             current_offset += 1;
                         }
                     }
                     KeyCode::Up => {
-                        if follow_mode {
-                            follow_mode = false;
-                        }
-                        if current_offset > 0 {
-                            current_offset -= 1;
-                        }
+                        end_reached = false;
+                        current_offset = current_offset.saturating_sub(1);
                     }
                     KeyCode::PageDown => {
-                        let end_reached = current_offset + 2 * page_size >= page_result.total_lines;
-                        if !follow_mode && !end_reached {
+                        if !end_reached {
                             current_offset += page_size;
-                        } else if end_reached {
-                            current_offset = page_result.total_lines - page_size;
                         }
                     }
                     KeyCode::PageUp => {
-                        if follow_mode {
-                            follow_mode = false;
-                        }
+                        end_reached = false;
                         current_offset = current_offset.saturating_sub(page_size);
                     }
                     _ => {}
@@ -142,4 +143,21 @@ fn trunc_str(s: &str, max_len: usize) -> &str {
     } else {
         s
     }
+}
+
+fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
+    let file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .append(true)
+        .open("logmancer.log")?;
+
+    env_logger::Builder::from_default_env()
+        .filter_level(LevelFilter::Debug)
+        .target(env_logger::Target::Pipe(Box::new(file)))
+        .init();
+
+    debug!("Log initialized");
+
+    Ok(())
 }

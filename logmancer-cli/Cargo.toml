@@ -7,6 +7,11 @@ edition = "2024"
 crossterm = "0.29.0"
 logmancer-core = { path = "../logmancer-core" }
 
+# Logging
+log = "0.4"
+anyhow = "1.0"
+env_logger = "0.11.8"
+
 [[bin]]
 name = "logmancer-cli"
 path = "src/main.rs"

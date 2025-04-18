@@ -4,5 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+log = "0.4"
 memmap2 = "0.9.5"
 regex = "1.11.1"
+crossbeam-channel = "0.5.15"
