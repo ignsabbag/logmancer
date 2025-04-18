@@ -2,13 +2,7 @@ use std::cmp::min;
 use std::io::{self};
 use log::debug;
 use crate::log_handler::LogHandler;
-
-pub struct PageResult {
-    pub lines: Vec<String>,
-    pub start_line: usize,
-    pub total_lines: usize,
-    pub indexing_progress: f64
-}
+use crate::page_result::PageResult;
 
 pub struct LogReader {
     log_handler: LogHandler

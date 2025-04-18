@@ -5,6 +5,7 @@ use crossterm::{
     cursor,
     event::{self, Event, KeyCode},
     execute, terminal,
+    style::{Print}
 };
 use log::{debug, error, LevelFilter};
 use logmancer_core::LogReader;
@@ -23,6 +24,7 @@ fn main() -> std::io::Result<()> {
     }
     let filepath = &args[1];
 
+    execute!(stdout(), terminal::EnterAlternateScreen)?;
     terminal::enable_raw_mode()?;
     std::panic::set_hook(Box::new(|panic_info| {
         error!("{}", panic_info);
@@ -38,30 +40,36 @@ fn main() -> std::io::Result<()> {
         }
     };
 
-    let mut stdout = stdout();
-    let mut page_size: usize;
-    let mut current_offset: usize = 0;
+    let mut page_size: usize = 20;
+    let mut page_first_line: usize = 0;
+    let mut last_page_result = None;
+
+    let mut last_dimensions = (0, 0);
     let mut follow_mode = false;
     let mut end_reached = false;
 
     loop {
 
         let (columns, rows) = terminal::size()?;
-        if rows > 2 && columns > 7 {
-            page_size = (rows.saturating_sub(2) - 2) as usize;
-        } else {
-            // In debug, sometimes columns and rows are 0
+        if rows <= 2 || columns <= 8 {
             continue;
+        }
+
+        let new_page_size = rows.saturating_sub(2) as usize;
+        let dimensions_changed = (columns, rows) != last_dimensions;
+        if dimensions_changed {
+            page_size = new_page_size;
+            last_dimensions = (columns, rows);
         }
 
         let result = if end_reached {
             reader.tail(page_size, follow_mode)
         } else {
-            reader.read_page(current_offset, page_size)
+            reader.read_page(page_first_line, page_size)
         };
         let page_result = match result {
             Ok(page_result) => {
-                current_offset = page_result.start_line;
+                page_first_line = page_result.start_line;
                 page_result
             },
             Err(e) => {
@@ -69,19 +77,25 @@ fn main() -> std::io::Result<()> {
                 break;
             }
         };
-        end_reached = current_offset + page_size >= page_result.total_lines;
+
+        end_reached = page_first_line + page_size >= page_result.total_lines;
         let index = page_result.indexing_progress * 100.0;
 
-        // Header
-        execute!(stdout, cursor::MoveTo(0, 0), terminal::Clear(terminal::ClearType::All))?;
-        print_row!(0, "File: {} | Follow Mode: {} | Total Lines: {} ({:.2}% indexed)",
-            &args[1], if follow_mode { "ON" } else { "OFF" }, page_result.total_lines, index);
-        print_row!(1, "{}", "-".repeat(columns as usize));
+        if last_page_result.as_ref() != Some(&page_result) || dimensions_changed {
+            // Header
+            print_row!(0, "File: {} | Follow Mode: {} | Total Lines: {} ({:.2}% indexed)",
+                &args[1], if follow_mode { "ON" } else { "OFF" }, page_result.total_lines, index);
+            print_row!(1, "{}", "-".repeat(columns as usize));
 
-        // Lines
-        for (i, line) in page_result.lines.iter().enumerate() {
-            print_row!(i + 2, "{:<5}{} {}", current_offset + i, "|",
-                trunc_str(line.trim_end(), (columns - 7) as usize));
+            // Lines
+            let last_line = page_result.start_line + page_size;
+            let left_offset = last_line.to_string().len() + 1;
+            for (i, line) in page_result.lines.iter().enumerate() {
+                print_row!(i + 2, "{:<left_offset$}{} {}", page_first_line + i, "|",
+                    trunc_str(line.trim_end(), columns as usize - left_offset - 2));
+            }
+
+            last_page_result = Some(page_result);
         }
 
         let polling = (end_reached && follow_mode) || index < 100.0;
@@ -101,28 +115,28 @@ fn main() -> std::io::Result<()> {
                     KeyCode::Char('f') | KeyCode::Char('F') => follow_mode = !follow_mode,
                     KeyCode::Char('g') => {
                         end_reached = false;
-                        current_offset = 0;
+                        page_first_line = 0;
                     }
                     KeyCode::Char('G') => {
                         end_reached = true;
                     }
                     KeyCode::Down => {
                         if !end_reached {
-                            current_offset += 1;
+                            page_first_line += 1;
                         }
                     }
                     KeyCode::Up => {
                         end_reached = false;
-                        current_offset = current_offset.saturating_sub(1);
+                        page_first_line = page_first_line.saturating_sub(1);
                     }
                     KeyCode::PageDown => {
                         if !end_reached {
-                            current_offset += page_size;
+                            page_first_line += page_size;
                         }
                     }
                     KeyCode::PageUp => {
                         end_reached = false;
-                        current_offset = current_offset.saturating_sub(page_size);
+                        page_first_line = page_first_line.saturating_sub(page_size);
                     }
                     _ => {}
                 }
@@ -131,6 +145,7 @@ fn main() -> std::io::Result<()> {
     }
 
     terminal::disable_raw_mode()?;
+    execute!(stdout(), terminal::LeaveAlternateScreen)?;
     Ok(())
 }
 
