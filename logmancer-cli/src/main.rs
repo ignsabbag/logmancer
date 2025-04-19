@@ -11,7 +11,7 @@ use log::{debug, error, LevelFilter};
 use logmancer_core::LogReader;
 use std::env;
 use std::fs::{OpenOptions};
-use std::io::stdout;
+use std::io::{stdout, Write};
 use std::{process, time};
 
 fn main() -> std::io::Result<()> {
@@ -79,12 +79,18 @@ fn main() -> std::io::Result<()> {
         };
 
         end_reached = page_first_line + page_size >= page_result.total_lines;
-        let index = page_result.indexing_progress * 100.0;
+        let indexing_progress = page_result.indexing_progress * 100.0;
 
         if last_page_result.as_ref() != Some(&page_result) || dimensions_changed {
+            let indexed = if indexing_progress < 100.0 {
+                format!(" ({:.2}% indexed)", indexing_progress)
+            } else {
+                "".to_owned()
+            };
+
             // Header
-            print_row!(0, "File: {} | Follow Mode: {} | Total Lines: {} ({:.2}% indexed)",
-                &args[1], if follow_mode { "ON" } else { "OFF" }, page_result.total_lines, index);
+            print_row!(0, "File: {} | Follow Mode: {} | Total Lines: {}{}",
+                &args[1], if follow_mode { "ON" } else { "OFF" }, page_result.total_lines, indexed);
             print_row!(1, "{}", "-".repeat(columns as usize));
 
             // Lines
@@ -97,8 +103,9 @@ fn main() -> std::io::Result<()> {
 
             last_page_result = Some(page_result);
         }
+        stdout().flush()?;
 
-        let polling = (end_reached && follow_mode) || index < 100.0;
+        let polling = (end_reached && follow_mode) || indexing_progress < 100.0;
         let event = if polling {
             if event::poll(time::Duration::from_millis(1000))? {
                 Some(event::read()?)

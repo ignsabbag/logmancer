@@ -7,20 +7,4 @@
 resolver = "3"
 members = [
     "logmancer-cli",
-    "logmancer-core"
-]
-
-#[lib]
-#name = "logmancer"
-#
-#[dependencies]
-#memmap2 = "0.9"           # Para memory-mapped files
-#regex = "1.10"            # Filtrado eficiente
-#nom = "7.1"               # Parsing de patrones
-#serde = { version = "1.0", features = ["derive"] }  # Configuración
-#itertools = "0.12"
-#thiserror = "2.0.12"       # Procesamiento lazy
-#
-#[dev-dependencies]
-#criterion = "0.5"         # Para benchmarks
-#tempfile = "3.19.1"
+    "logmancer-core"]

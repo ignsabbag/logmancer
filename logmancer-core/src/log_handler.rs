@@ -7,7 +7,7 @@ use crate::file_read_ops::FileReadOps;
 use crate::file_write_ops::FileWriteOps;
 use crate::log_file::LogFile;
 
-const BLOCK_BYTES: usize = 10 * 1024; // 10KB
+const BLOCK_BYTES: usize = 1024 * 1024; // 1MB
 
 pub struct LogHandler {
     log_file: Arc<RwLock<LogFile>>,
@@ -35,6 +35,7 @@ impl LogHandler {
                                             if end_reached {
                                                 break;
                                             }
+                                            Self::wait(1);
                                         }
                                         Err(error) => {
                                             panic!("Error indexing file: {}", error)
@@ -60,8 +61,11 @@ impl LogHandler {
 
     pub fn reload(&mut self) {
         self.sender.send(()).unwrap();
+        Self::wait(500);
+    }
 
-        let ten_millis = Duration::from_millis(200);
+    fn wait(millis: u64) {
+        let ten_millis = Duration::from_millis(millis);
         let now = time::Instant::now();
         while now.elapsed() < ten_millis {
             thread::sleep(ten_millis);
