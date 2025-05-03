@@ -1,3 +1,6 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PageResult {
     pub lines: Vec<String>,
     pub start_line: usize,
