@@ -1,3 +1,5 @@
+use crate::api::app_state::AppState;
+
 #[cfg(feature = "ssr")]
 mod api;
 
@@ -6,31 +8,27 @@ mod api;
 async fn main() {
     use std::sync::Arc;
     use axum::Router;
-    use axum::routing::{post,get};
-    use axum::Extension;
+    use axum::routing::{get, post};
     use leptos::logging::log;
     use leptos::prelude::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
     use logmancer_web::app::*;
-    use crate::api::open_files::OpenFiles;
+    use logmancer_core::LogRegistry;
     use crate::api::open_server_file::open_server_file;
     use crate::api::read_page::read_page;
-    use crate::api::app_state::AppState;
     
     let conf = get_configuration(None).unwrap();
     let addr = conf.leptos_options.site_addr;
     let leptos_options = conf.leptos_options;
     // Generate the list of routes in your Leptos App
     let routes = generate_route_list(App);
-
-    let app_state = AppState {
-        open_files: Arc::new(OpenFiles::new())
-    };
-
+    
     let api_routes = Router::new()
         .route("/open-server-file", post(open_server_file))
         .route("/read-page", get(read_page))
-        .with_state(app_state.clone());
+        .with_state(AppState {
+            registry: Arc::new(LogRegistry::new())
+        });
 
     let app = Router::new()
         .nest("/api", api_routes)

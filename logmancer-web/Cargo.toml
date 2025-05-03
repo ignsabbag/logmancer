@@ -17,12 +17,12 @@ leptos_axum = { version = "0.7.0", optional = true }
 leptos_meta = { version = "0.7.0" }
 tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
 wasm-bindgen = { version = "=0.2.100", optional = true }
-dashmap = "6.1.0"
 reqwest = { version = "0.12.15", features = ["json"] }
 wasm-bindgen-futures = "0.4.50"
 
 [features]
 hydrate = [
+    "logmancer-core/wasm",
     "leptos/hydrate",
     "dep:console_error_panic_hook",
     "dep:wasm-bindgen",

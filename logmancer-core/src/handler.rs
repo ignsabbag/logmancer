@@ -1,20 +1,20 @@
-use std::sync::{Arc, RwLock};
-use std::{io, thread, time};
-use std::time::Duration;
+use crate::file_ops::read::FileReadOps;
+use crate::file_ops::write::FileWriteOps;
+use crate::models::log_file::LogFile;
 use crossbeam_channel::{select, unbounded, Sender};
 use log::info;
-use crate::file_read_ops::FileReadOps;
-use crate::file_write_ops::FileWriteOps;
-use crate::log_file::LogFile;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+use std::{io, thread, time};
 
 const BLOCK_BYTES: usize = 1024 * 1024; // 1MB
 
-pub struct LogHandler {
+pub struct LogFileHandler {
     log_file: Arc<RwLock<LogFile>>,
     sender: Sender<()>
 }
 
-impl LogHandler {
+impl LogFileHandler {
 
     pub fn new(path: String) -> io::Result<Self> {
         let (sender, receiver) = unbounded::<()>();
@@ -56,7 +56,7 @@ impl LogHandler {
 
         sender.send(()).unwrap();
 
-        Ok(LogHandler { log_file, sender })
+        Ok(LogFileHandler { log_file, sender })
     }
 
     pub fn reload(&mut self) {

@@ -1,7 +1,7 @@
 use std::sync::Arc;
-use crate::api::open_files::OpenFiles;
+use logmancer_core::LogRegistry;
 
 #[derive(Clone)]
 pub struct AppState {
-    pub open_files: Arc<OpenFiles>
+    pub registry: Arc<LogRegistry>
 }

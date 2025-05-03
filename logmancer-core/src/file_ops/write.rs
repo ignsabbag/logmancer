@@ -1,4 +1,4 @@
-use crate::log_file::LogFile;
+use crate::models::log_file::LogFile;
 use memmap2::Mmap;
 use std::cmp::min;
 use std::fs::{metadata, File};

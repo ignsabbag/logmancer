@@ -1,9 +1,9 @@
-mod log_reader;
-mod page_result;
-mod log_handler;
-mod log_file;
-mod file_write_ops;
-mod file_read_ops;
+mod reader;
+mod handler;
+mod file_ops;
+mod models;
+mod registry;
 
-pub use log_reader::LogReader;
-pub use page_result::PageResult;
+pub use reader::LogReader;
+pub use models::page_result::PageResult;
+pub use registry::LogRegistry;

@@ -1,4 +1,4 @@
-use crate::log_file::LogFile;
+use crate::models::log_file::LogFile;
 use std::io;
 use std::sync::RwLockReadGuard;
 

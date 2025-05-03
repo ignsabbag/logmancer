@@ -1,24 +1,24 @@
+use crate::handler::LogFileHandler;
+use crate::models::PageResult;
+use log::debug;
 use std::cmp::min;
 use std::io::{self};
-use log::debug;
-use crate::log_handler::LogHandler;
-use crate::page_result::PageResult;
 
 pub struct LogReader {
-    log_handler: LogHandler
+    handler: LogFileHandler
 }
 
 impl LogReader {
 
     pub fn new(path: String) -> io::Result<Self> {
-        let log_handler = LogHandler::new(path)?;
-        Ok(LogReader { log_handler })
+        let file_log_handler = LogFileHandler::new(path)?;
+        Ok(LogReader { handler: file_log_handler })
     }
 
     /// Reads a page from the file, starting at `start_line` and reading up to `max_lines` lines.
     pub fn read_page(&mut self, start_line: usize, max_lines: usize) -> io::Result<PageResult> {
         debug!("Reading from line {} to max {}", start_line, max_lines);
-        let read_ops = self.log_handler.read_ops();
+        let read_ops = self.handler.read_ops();
         let to_line = min(start_line + max_lines, read_ops.total_lines()?);
         let from_line = to_line.saturating_sub(max_lines);
         let mut lines = Vec::with_capacity(max_lines);
@@ -36,9 +36,9 @@ impl LogReader {
     pub fn tail(&mut self, max_lines: usize, follow: bool) -> io::Result<PageResult> {
         debug!("Reading last {} lines to the end", max_lines);
         if follow {
-            self.log_handler.reload();
+            self.handler.reload();
         }
-        let read_ops = self.log_handler.read_ops();
+        let read_ops = self.handler.read_ops();
         let start_line = read_ops.total_lines()? - max_lines;
         let mut lines = Vec::with_capacity(max_lines);
         for current_line in start_line..read_ops.total_lines()? {
