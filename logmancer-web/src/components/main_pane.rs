@@ -1,16 +1,16 @@
-use crate::components::lines::Lines;
-use crate::components::position_slider::PositionSlider;
-use leptos::prelude::{ElementChild, StyleAttribute};
+use crate::components::content_lines::ContentLines;
+use crate::components::content_scroll::ContentScroll;
+use leptos::prelude::{ClassAttribute, ElementChild};
 use leptos::{component, view, IntoView};
 
 #[component]
 pub fn MainPane() -> impl IntoView {
     
     view! {
-        <div style="height: 100vh; overflow: hidden; font-family: monospace;">
-            <div style="display: flex; height: 100%; width: 100%;">
-                <Lines />
-                <PositionSlider />
+        <div class="main-pane">
+            <div class="content">
+                <ContentLines />
+                <ContentScroll />
             </div>
         </div>
     }

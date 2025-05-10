@@ -46,7 +46,7 @@ pub fn Home() -> impl IntoView {
         //         <button type="submit">Subir</button>
         //     </form>
         // </div>
-        <form on:submit=on_submit>
+        <form class="home" on:submit=on_submit>
             <input
               type="text"
               placeholder="Ruta en el servidor"

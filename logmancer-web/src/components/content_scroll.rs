@@ -9,7 +9,7 @@ const BASE_LINES: f64 = 10_000.0;
 const LINE_HEIGHT: f64 = 20.0;
 
 #[component]
-pub fn PositionSlider() -> impl IntoView {
+pub fn ContentScroll() -> impl IntoView {
     let LogViewContext {
         start_line,
         set_start_line,
@@ -85,10 +85,8 @@ pub fn PositionSlider() -> impl IntoView {
     });
     
     view! {
-        <div node_ref=scroll_ref
-                style="width: 16px; background: #f0f0f0; position: relative; overflow-y: scroll;"
-                on:scroll=on_scroll>
-            <div node_ref=spacer_ref style="width: 1px; height: 0px; background: transparent;"></div>
+        <div node_ref=scroll_ref class="scrollbar" on:scroll=on_scroll>
+            <div class="spacer" node_ref=spacer_ref></div>
         </div>
     }
 }
