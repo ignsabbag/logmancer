@@ -12,8 +12,9 @@ use logmancer_core::PageResult;
 pub fn LogView() -> impl IntoView {
     let params = use_params_map();
     let file_id = move || params.get().get("id").unwrap_or_default();
-    let (start_line, set_start_line) = signal(0usize);
-    let (page_size, _) = signal(30usize);
+    let (start_line, set_start_line) = signal(0_usize);
+    let (total_lines, set_total_lines) = signal(0_usize);
+    let (page_size, set_page_size) = signal(50_usize);
 
     let log_page = LocalResource::new(
         move || fetch_page(file_id(), start_line.get(), page_size.get()));
@@ -22,7 +23,10 @@ pub fn LogView() -> impl IntoView {
         file_id: file_id(),
         start_line,
         set_start_line,
+        total_lines,
+        set_total_lines,
         page_size,
+        set_page_size,
         log_page
     });
 
