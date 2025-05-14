@@ -1,4 +1,4 @@
-use crate::api::app_state::AppState;
+use crate::api::config::AppState;
 use crate::api::commons::{OpenServerFileRequest, OpenServerFileResponse};
 use axum::extract::State;
 use axum::http::StatusCode;

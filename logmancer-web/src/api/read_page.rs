@@ -3,7 +3,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use leptos::logging::log;
-use crate::api::app_state::AppState;
+use crate::api::config::AppState;
 use crate::api::commons::ReadPageRequest;
 
 pub async fn read_page(State(app_state): State<AppState>, query: Query<ReadPageRequest>) -> impl IntoResponse {

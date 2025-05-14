@@ -1,7 +1,10 @@
 pub mod commons;
 
 #[cfg(feature = "ssr")]
-pub mod app_state;
+mod config;
+
+#[cfg(feature = "ssr")]
+pub use config::api_routes;
 
 #[cfg(feature = "ssr")]
 pub mod open_server_file;
