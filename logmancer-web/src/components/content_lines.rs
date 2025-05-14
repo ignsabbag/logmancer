@@ -35,33 +35,27 @@ pub fn ContentLines() -> impl IntoView {
     let (interval, set_interval) = signal(None::<IntervalHandle>);
     let (active_key, set_active_key) = signal(None::<String>);
 
-    let process_key = move || {
-        match active_key.get() {
-            Some(key) => {
-                log!("Key {} pressed", key);
-                match key.as_str() {
-                    ARROW_UP => set_start_line.update(|current| {
-                        *current = current.saturating_sub(MIN_JUMP as usize)
-                    }),
-                    ARROW_DOWN => set_start_line.update(|current| {
-                            *current = current.saturating_add(MIN_JUMP as usize)
-                    }),
-                    PAGE_UP => set_start_line.update(|current| {
-                                *current = current.saturating_sub(page_size.get())
-                    }),
-                    PAGE_DOWN => set_start_line.update(|current| {
-                                    *current = current.saturating_add(page_size.get())
-                    }),
-                    _ => ()
-                }
-            },
+    let process_key = move |key: &str| {
+        log!("Key {} pressed", key);
+        match key {
+            ARROW_UP => set_start_line.update(|current| {
+                *current = current.saturating_sub(MIN_JUMP as usize)
+            }),
+            ARROW_DOWN => set_start_line.update(|current| {
+                *current = current.saturating_add(MIN_JUMP as usize)
+            }),
+            PAGE_UP => set_start_line.update(|current| {
+                *current = current.saturating_sub(page_size.get())
+            }),
+            PAGE_DOWN => set_start_line.update(|current| {
+                *current = current.saturating_add(page_size.get())
+            }),
+            "g" => set_start_line.set(0),
             _ => ()
         }
     };
 
     let on_key_down = move |ev: KeyboardEvent| {
-        ev.prevent_default();
-
         let key = ev.key();
         if KEYS.contains(&key.as_str()) {
             if active_key.get() == Some(key.clone()) {
@@ -69,7 +63,11 @@ pub fn ContentLines() -> impl IntoView {
             }
             set_active_key.set(Some(key.clone()));
 
-            let result = set_interval_with_handle(process_key, Duration::from_millis(DEBOUNCE_MS));
+            let result = set_interval_with_handle(move || {
+                if let Some(key) = active_key.get() {
+                    process_key(&key)
+                }
+            }, Duration::from_millis(DEBOUNCE_MS));
 
             if let Ok(handle) = result {
                 set_interval.set(Some(handle));
@@ -79,11 +77,11 @@ pub fn ContentLines() -> impl IntoView {
 
     let on_key_up = move |ev: KeyboardEvent| {
         let key = ev.key();
+        process_key(&key);
         if KEYS.contains(&key.as_str()) {
             if let Some(handle) = interval.get() {
                 handle.clear();
             }
-            process_key();
             set_active_key.set(None);
         }
     };
