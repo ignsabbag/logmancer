@@ -24,6 +24,8 @@ pub fn ContentLines() -> impl IntoView {
         total_lines,
         page_size,
         set_page_size,
+        index_progress,
+        set_index_progress,
         log_page,
         ..
     } = use_context().expect("");
@@ -127,11 +129,16 @@ pub fn ContentLines() -> impl IntoView {
     };
 
     Effect::new(move || {
-        if let Some(div) = div_ref.get() {
-            let mut lines = (div.client_height() as f32 / 20.0) as usize;
-            lines = lines.saturating_sub(1);
-            if lines != page_size.get() {
-                set_page_size.set(lines);
+        if let Some(Ok(page_result)) = log_page.get().as_deref().map(|res| res.as_ref()) {
+            if let Some(div) = div_ref.get() {
+                let mut lines = (div.client_height() as f32 / 20.0) as usize;
+                lines = lines.saturating_sub(1);
+                if lines != page_size.get() {
+                    set_page_size.set(lines);
+                }
+            }
+            if page_result.indexing_progress != index_progress.get() {
+                set_index_progress.set(page_result.indexing_progress);
             }
         }
     });

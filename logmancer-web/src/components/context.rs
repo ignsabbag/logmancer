@@ -10,5 +10,7 @@ pub struct LogViewContext {
     pub set_total_lines: WriteSignal<usize>,
     pub page_size: ReadSignal<usize>,
     pub set_page_size: WriteSignal<usize>,
+    pub index_progress: ReadSignal<f64>,
+    pub set_index_progress: WriteSignal<f64>,
     pub log_page: LocalResource<Result<PageResult,ServerFnError>>
 }

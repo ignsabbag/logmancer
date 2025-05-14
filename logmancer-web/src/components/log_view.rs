@@ -1,9 +1,10 @@
 use crate::api::commons::ReadPageRequest;
 use crate::components::context::LogViewContext;
+use crate::components::index_progress_bar::IndexProgressBar;
 use crate::components::main_pane::MainPane;
+use leptos::prelude::ServerFnError;
 use leptos::prelude::provide_context;
 use leptos::prelude::{signal, window, Get, LocalResource};
-use leptos::prelude::ServerFnError;
 use leptos::{component, view, IntoView};
 use leptos_router::hooks::use_params_map;
 use logmancer_core::PageResult;
@@ -15,6 +16,7 @@ pub fn LogView() -> impl IntoView {
     let (start_line, set_start_line) = signal(0_usize);
     let (total_lines, set_total_lines) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
+    let (index_progress, set_index_progress) = signal(0_f64);
 
     let log_page = LocalResource::new(
         move || fetch_page(file_id(), start_line.get(), page_size.get()));
@@ -27,11 +29,14 @@ pub fn LogView() -> impl IntoView {
         set_total_lines,
         page_size,
         set_page_size,
+        index_progress,
+        set_index_progress,
         log_page
     });
 
     view! {
         <MainPane />
+        <IndexProgressBar />
     }
 }
 
