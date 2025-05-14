@@ -2,13 +2,19 @@ use crate::components::context::LogViewContext;
 use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
-use leptos::prelude::{set_timeout_with_handle, signal, ClassAttribute, Effect, ElementChild, Get, NodeRef, NodeRefAttribute, OnAttribute, Set, Suspend, TimeoutHandle, Transition};
+use leptos::prelude::{set_interval_with_handle, set_timeout_with_handle, signal, ClassAttribute, Effect, ElementChild, Get, GlobalAttributes, IntervalHandle, NodeRef, NodeRefAttribute, OnAttribute, Set, Suspend, TimeoutHandle, Transition, Update};
 use leptos::{component, html, view, IntoView};
 use std::time::Duration;
 
 const SCROLL_RATIO: f64 = 0.2;
 const DEBOUNCE_MS: u64 = 200;
 const MIN_JUMP: i32 = 1;
+
+const ARROW_UP: &str = "ArrowUp";
+const ARROW_DOWN: &str = "ArrowDown";
+const PAGE_UP: &str = "PageUp";
+const PAGE_DOWN: &str = "PageDown";
+const KEYS: [&str; 4] = [ARROW_DOWN, ARROW_UP, PAGE_DOWN, PAGE_UP];
 
 #[component]
 pub fn ContentLines() -> impl IntoView {
@@ -25,30 +31,61 @@ pub fn ContentLines() -> impl IntoView {
     let div_ref: NodeRef<html::Div> = NodeRef::new();
 
     let (wheel_lines, set_wheel_lines) = signal(0_i32);
-    let (timeout, set_timeout) = signal::<Option<TimeoutHandle>>(None);
+    let (timeout, set_timeout) = signal(None::<TimeoutHandle>);
+    let (interval, set_interval) = signal(None::<IntervalHandle>);
+    let (active_key, set_active_key) = signal(None::<String>);
 
-
-    let on_key_down = move |ev: KeyboardEvent| {/*
-        ev.prevent_default();
-        match ev.key().as_str() {
-            "ArrowUp" => {
-                log!("ArrowUp");
-                set_start_line.update(|current| *current -= MIN_JUMP)
-            },
-            "ArrowDown" => {
-                log!("ArrowDown");
-                set_start_line.update(|current| *current += MIN_JUMP)
-            },
-            "PageUp" => {
-                log!("PageUp");
-                set_start_line.update(|current| *current += page_size.get())
-            },
-            "PageDown" => {
-                log!("PageDown");
-                set_start_line.update(|current| *current += page_size.get())
+    let process_key = move || {
+        match active_key.get() {
+            Some(key) => {
+                log!("Key {} pressed", key);
+                match key.as_str() {
+                    ARROW_UP => set_start_line.update(|current| {
+                        *current = current.saturating_sub(MIN_JUMP as usize)
+                    }),
+                    ARROW_DOWN => set_start_line.update(|current| {
+                            *current = current.saturating_add(MIN_JUMP as usize)
+                    }),
+                    PAGE_UP => set_start_line.update(|current| {
+                                *current = current.saturating_sub(page_size.get())
+                    }),
+                    PAGE_DOWN => set_start_line.update(|current| {
+                                    *current = current.saturating_add(page_size.get())
+                    }),
+                    _ => ()
+                }
             },
             _ => ()
-        }*/
+        }
+    };
+
+    let on_key_down = move |ev: KeyboardEvent| {
+        ev.prevent_default();
+
+        let key = ev.key();
+        if KEYS.contains(&key.as_str()) {
+            if active_key.get() == Some(key.clone()) {
+                return;
+            }
+            set_active_key.set(Some(key.clone()));
+
+            let result = set_interval_with_handle(process_key, Duration::from_millis(DEBOUNCE_MS));
+
+            if let Ok(handle) = result {
+                set_interval.set(Some(handle));
+            }
+        }
+    };
+
+    let on_key_up = move |ev: KeyboardEvent| {
+        let key = ev.key();
+        if KEYS.contains(&key.as_str()) {
+            if let Some(handle) = interval.get() {
+                handle.clear();
+            }
+            process_key();
+            set_active_key.set(None);
+        }
     };
 
     let on_wheel = move |ev: WheelEvent| {
@@ -102,7 +139,8 @@ pub fn ContentLines() -> impl IntoView {
     });
     
     view! {
-        <div node_ref=div_ref on:keydown=on_key_down on:wheel=on_wheel class="content-lines">
+        <div node_ref=div_ref on:keydown=on_key_down on:keyup=on_key_up on:wheel=on_wheel
+                tabindex="0" class="content-lines">
             <Transition fallback=move || view! { <p>"Loading..."</p> }>
                 <ul>
                     { move || Suspend::new(async move {
