@@ -2,13 +2,16 @@ use crate::components::context::LogViewContext;
 use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
-use leptos::prelude::{set_interval_with_handle, set_timeout_with_handle, signal, ClassAttribute, Effect, ElementChild, Get, GlobalAttributes, IntervalHandle, NodeRef, NodeRefAttribute, OnAttribute, Set, Suspend, TimeoutHandle, Transition, Update};
+use leptos::prelude::*;
 use leptos::{component, html, view, IntoView};
+use leptos_use::use_resize_observer;
+use logmancer_core::PageResult;
 use std::time::Duration;
 
 const SCROLL_RATIO: f64 = 0.2;
 const DEBOUNCE_MS: u64 = 200;
 const MIN_JUMP: i32 = 1;
+const LINE_HEIGHT: f64 = 20.0;
 
 const ARROW_UP: &str = "ArrowUp";
 const ARROW_DOWN: &str = "ArrowDown";
@@ -19,19 +22,18 @@ const KEYS: [&str; 4] = [ARROW_DOWN, ARROW_UP, PAGE_DOWN, PAGE_UP];
 #[component]
 pub fn ContentLines() -> impl IntoView {
     let LogViewContext {
-        start_line,
         set_start_line,
-        total_lines,
         page_size,
         set_page_size,
-        index_progress,
-        set_index_progress,
         log_page,
         ..
     } = use_context().expect("");
 
     let div_ref: NodeRef<html::Div> = NodeRef::new();
 
+    let (page_result, set_page_result) = signal(None::<PageResult>);
+    let (content_width, set_content_width) = signal(2048_f64);
+    let (content_height, set_content_height) = signal(1080_f64);
     let (wheel_lines, set_wheel_lines) = signal(0_i32);
     let (timeout, set_timeout) = signal(None::<TimeoutHandle>);
     let (interval, set_interval) = signal(None::<IntervalHandle>);
@@ -105,57 +107,68 @@ pub fn ContentLines() -> impl IntoView {
         set_wheel_lines.set(lines_to_jump * signum);
 
         if let None = timeout.get() {
-            let handle = set_timeout_with_handle(
-                move || {
-                    let delta_lines = wheel_lines.get();
-                    let new_line = if delta_lines < 0 {
-                        log!("Scrolling up {} lines", delta_lines);
-                        start_line.get().saturating_sub(delta_lines.abs() as usize)
-                    } else {
-                        log!("Scrolling down {} lines", delta_lines);
-                        start_line.get().saturating_add(delta_lines as usize)
-                            .min(total_lines.get().saturating_sub(page_size.get()))
-                    };
-                    if start_line.get() != new_line {
-                        log!("Updating start_line by wheel to: {}", new_line);
-                        set_start_line.set(new_line);
-                    }
-                    set_timeout.set(None);
-                },
-                Duration::from_millis(DEBOUNCE_MS)
-            ).ok();
-            set_timeout.set(handle);
+            if let Some(page_result) = page_result.get() {
+                let handle = set_timeout_with_handle(
+                    move || {
+                        let delta_lines = wheel_lines.get();
+                        let new_line = if delta_lines < 0 {
+                            log!("Scrolling up {} lines", delta_lines);
+                            page_result.start_line.saturating_sub(delta_lines.abs() as usize)
+                        } else {
+                            log!("Scrolling down {} lines", delta_lines);
+                            page_result.start_line.saturating_add(delta_lines as usize)
+                                .min(page_result.total_lines.saturating_sub(page_size.get()))
+                        };
+                        if page_result.start_line != new_line {
+                            log!("Updating start_line by wheel to: {}", new_line);
+                            set_start_line.set(new_line);
+                        }
+                        set_timeout.set(None);
+                    },
+                    Duration::from_millis(DEBOUNCE_MS)
+                ).ok();
+                set_timeout.set(handle);
+            }
         }
     };
 
     Effect::new(move || {
-        if let Some(Ok(page_result)) = log_page.get().as_deref().map(|res| res.as_ref()) {
-            if let Some(div) = div_ref.get() {
-                let mut lines = (div.client_height() as f32 / 20.0) as usize;
+        use_resize_observer(div_ref, move |entries, _observer| {
+            let rect = entries[0].content_rect();
+            if content_width.get() != rect.width() {
+                log!("Updating content width to {}", rect.width());
+                set_content_width.set(rect.width());
+            }
+            if content_height.get() != rect.height() {
+                log!("Updating content height to {}", rect.height());
+                set_content_height.set(rect.height());
+
+                let mut lines = (rect.height() / LINE_HEIGHT) as usize;
                 lines = lines.saturating_sub(1);
                 if lines != page_size.get() {
+                    log!("Updating page_size to {}", lines);
                     set_page_size.set(lines);
                 }
             }
-            if page_result.indexing_progress != index_progress.get() {
-                set_index_progress.set(page_result.indexing_progress);
-            }
-        }
+        });
     });
-    
+
     view! {
         <div node_ref=div_ref on:keydown=on_key_down on:keyup=on_key_up on:wheel=on_wheel
                 tabindex="0" class="content-lines">
-            <Transition fallback=move || view! { <p>"Loading..."</p> }>
-                <ul>
-                    { move || Suspend::new(async move {
-                        log_page.await.map(|page_result| view! {
-                            { page_result.lines.into_iter().enumerate().map(|(i, line)| view! {
-                                <li><b>{page_result.start_line + i + 1}</b> | {line}</li>
-                            }).collect::<Vec<_>>() }
-                        })
-                    })}
-                </ul>
+            <Transition>
+                { move || Suspend::new(async move {
+                    log_page.await.map(|page_result| {
+                        set_page_result.set(Some(page_result.clone()));
+                        view! {
+                            <ul>
+                                { page_result.lines.into_iter().enumerate().map(|(i, line)| view! {
+                                    <li><b>{page_result.start_line + i + 1}</b> | {line}</li>
+                                }).collect::<Vec<_>>() }
+                            </ul>
+                        }
+                    })
+                })}
             </Transition>
         </div>
     }

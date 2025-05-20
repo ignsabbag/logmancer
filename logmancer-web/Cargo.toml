@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 logmancer-core = { path = "../logmancer-core" }
 leptos = { version = "0.7.0" }
 leptos_router = { version = "0.7.0" }
+leptos-use = { version = "0.15.7", features = ["use_resize_observer"] }
 axum = { version = "0.7.9", optional = true }
 serde = {  version = "1.0.219", features = ["derive"] }
 console_error_panic_hook = { version = "0.1", optional = true}
