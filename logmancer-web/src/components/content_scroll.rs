@@ -1,3 +1,4 @@
+use std::time::Duration;
 use crate::components::context::LogViewContext;
 use leptos::context::use_context;
 use leptos::logging::log;
@@ -13,6 +14,8 @@ const LINE_HEIGHT: f64 = 20.0;
 pub fn ContentScroll() -> impl IntoView {
     let LogViewContext {
         set_start_line,
+        page_size,
+        set_tail,
         log_page,
         ..
     } = use_context().expect("");
@@ -20,29 +23,45 @@ pub fn ContentScroll() -> impl IntoView {
     let scroll_ref: NodeRef<html::Div> = NodeRef::new();
     let spacer_ref: NodeRef<html::Div> = NodeRef::new();
 
+    let (programmatic_scroll, set_programmatic_scroll) = signal(false);
     let (page_result, set_page_result) = signal(None::<PageResult>);
-    let (timeout, set_timeout) = signal::<Option<TimeoutHandle>>(None);
+    let (debounce, set_debounce) = signal::<Option<TimeoutHandle>>(None);
+
+    let update_tail = move |new_line: usize, page_result: PageResult| {
+        set_tail.update_untracked(move |current| {
+            if new_line < page_result.start_line {
+                log!("Updating tail to false");
+                *current = false
+            } else if new_line + page_size.get() > page_result.total_lines {
+                log!("Updating tail to true");
+                *current = true
+            }
+        });
+    };
 
     let on_scroll = move |_| {
         if let Some(scroll) = scroll_ref.get() {
+            log!("Programmatic Scroll: {}", programmatic_scroll.get());
+            if programmatic_scroll.get() { return; }
+
             if let Some(page_result) = page_result.get() {
                 log!("Scroll detected: {}", scroll.scroll_top());
-                if let Some(timeout_handle) = timeout.get() {
-                    timeout_handle.clear();
-                }
-                if let Ok(handle) = set_timeout_with_handle(
-                    move || {
-                        let ratio = page_result.total_lines as f64 * scroll.scroll_top() as f64 / scroll.scroll_height() as f64;
-                        let approx_line = ratio.floor() as usize;
-                        log!("Scrolling to line {}", approx_line);
-                        if page_result.start_line != approx_line {
-                            log!("Updating start_line by scrollbar. Old: {}. New: {}", page_result.start_line, approx_line);
-                            set_start_line.set(approx_line);
-                        }
-                    },
-                    std::time::Duration::from_millis(300)
-                ) {
-                    set_timeout.set(Some(handle));
+                if None == debounce.get() {
+                    let timeout_handle = set_timeout_with_handle(
+                        move || {
+                            let ratio = page_result.total_lines as f64 * scroll.scroll_top() as f64 / scroll.scroll_height() as f64;
+                            let approx_line = ratio.floor() as usize;
+                            log!("Scrolling to line {}", approx_line);
+                            if page_result.start_line != approx_line {
+                                log!("Updating start_line by scrollbar. Old: {}. New: {}", page_result.start_line, approx_line);
+                                update_tail(approx_line, page_result);
+                                set_start_line.set(approx_line);
+                            }
+                            set_debounce.set(None);
+                        },
+                        Duration::from_millis(300)
+                    ).ok();
+                    set_debounce.set(timeout_handle);
                 }
             }
         }
@@ -54,7 +73,7 @@ pub fn ContentScroll() -> impl IntoView {
         } else { 0 }
     });
 
-    let scroll_pos = Signal::derive(move || {
+    let scroll_pos = Memo::new(move |_| {
         if let Some(page_result) = page_result.get() {
             log!("Calculating scroll position. Height: {}. StartLine: {}. TotalLines: {}",
                     spacer_height.get(), page_result.start_line, page_result.total_lines);
@@ -66,27 +85,27 @@ pub fn ContentScroll() -> impl IntoView {
     Effect::new(move || {
         if let Some(scroll) = scroll_ref.get() {
             log!("Updating scroll_top to {}", scroll_pos.get());
+            set_programmatic_scroll.set(true);
             scroll.set_scroll_top(scroll_pos.get());
 
             if let Some(spacer) = spacer_ref.get() {
                 (*spacer).style().set_property("height", format!("{}px", spacer_height.get()).as_str()).unwrap();
             }
+
+            set_timeout(move || set_programmatic_scroll.set(false), Duration::from_millis(50));
         }
     });
 
     view! {
         <div node_ref=scroll_ref class="scrollbar" on:scroll=on_scroll>
-            <div
-                class="spacer"
-                node_ref=spacer_ref
-                style:width=move || format!("{}px", scroll_pos.get())>
-                    <Transition>
-                        { move || Suspend::new(async move {
-                            log_page.await.map(|page_result| {
-                                set_page_result.set(Some(page_result));
-                            })
-                        })}
-                    </Transition>
+            <div class="spacer" node_ref=spacer_ref>
+                <Transition>
+                    { move || Suspend::new(async move {
+                        log_page.await.map(|page_result| {
+                            set_page_result.set(Some(page_result));
+                        })
+                    })}
+                </Transition>
             </div>
         </div>
     }

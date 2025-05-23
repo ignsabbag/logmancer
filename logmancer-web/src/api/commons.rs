@@ -16,3 +16,10 @@ pub struct ReadPageRequest {
     pub start_line: usize,
     pub max_lines: usize
 }
+
+#[derive(Serialize,Deserialize,Debug)]
+pub struct TailRequest {
+    pub file_id: String,
+    pub max_lines: usize,
+    pub follow: bool
+}

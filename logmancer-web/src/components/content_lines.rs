@@ -8,9 +8,9 @@ use leptos_use::use_resize_observer;
 use logmancer_core::PageResult;
 use std::time::Duration;
 
-const SCROLL_RATIO: f64 = 0.2;
+const SCROLL_RATIO: f64 = 0.3;
 const DEBOUNCE_MS: u64 = 200;
-const MIN_JUMP: i32 = 1;
+const MIN_JUMP: i32 = 3;
 const LINE_HEIGHT: f64 = 20.0;
 
 const ARROW_UP: &str = "ArrowUp";
@@ -25,6 +25,10 @@ pub fn ContentLines() -> impl IntoView {
         set_start_line,
         page_size,
         set_page_size,
+        tail,
+        set_tail,
+        follow,
+        set_follow,
         log_page,
         ..
     } = use_context().expect("");
@@ -35,26 +39,53 @@ pub fn ContentLines() -> impl IntoView {
     let (content_width, set_content_width) = signal(2048_f64);
     let (content_height, set_content_height) = signal(1080_f64);
     let (wheel_lines, set_wheel_lines) = signal(0_i32);
-    let (timeout, set_timeout) = signal(None::<TimeoutHandle>);
+    let (debounce, set_debounce) = signal(None::<TimeoutHandle>);
     let (interval, set_interval) = signal(None::<IntervalHandle>);
     let (active_key, set_active_key) = signal(None::<String>);
 
+    let update_tail = move |new_line: usize| {
+        set_tail.update_untracked(move |current| {
+            let page_result = page_result.get().unwrap();
+            if page_result.start_line > new_line {
+                log!("Updating tail to false");
+                *current = false
+            } else if new_line.saturating_add(page_size.get()) >= page_result.total_lines {
+                log!("Updating tail to true");
+                *current = true
+            }
+        });
+    };
+
     let process_key = move |key: &str| {
+        let page_result = page_result.get().unwrap();
         log!("Key {} pressed", key);
         match key {
-            ARROW_UP => set_start_line.update(|current| {
-                *current = current.saturating_sub(MIN_JUMP as usize)
-            }),
-            ARROW_DOWN => set_start_line.update(|current| {
-                *current = current.saturating_add(MIN_JUMP as usize)
-            }),
-            PAGE_UP => set_start_line.update(|current| {
-                *current = current.saturating_sub(page_size.get())
-            }),
-            PAGE_DOWN => set_start_line.update(|current| {
-                *current = current.saturating_add(page_size.get())
-            }),
-            "g" => set_start_line.set(0),
+            ARROW_UP => {
+                let new_line = page_result.start_line.saturating_sub(MIN_JUMP as usize);
+                update_tail(new_line);
+                set_start_line.set(new_line);
+            },
+            ARROW_DOWN => {
+                let new_line = page_result.start_line.saturating_add(MIN_JUMP as usize);
+                update_tail(new_line);
+                set_start_line.set(new_line);
+            },
+            PAGE_UP => {
+                let new_line = page_result.start_line.saturating_sub(page_size.get());
+                update_tail(new_line);
+                set_start_line.set(new_line);
+            },
+            PAGE_DOWN => {
+                let new_line = page_result.start_line.saturating_add(page_size.get());
+                update_tail(new_line);
+                set_start_line.set(new_line);
+            },
+            "g" => {
+                update_tail(0);
+                set_start_line.set(0);
+            },
+            "G" => set_tail.set(true),
+            "f"|"F" => set_follow.update(|current| *current = !current.to_owned()),
             _ => ()
         }
     };
@@ -106,7 +137,7 @@ pub fn ContentLines() -> impl IntoView {
         };
         set_wheel_lines.set(lines_to_jump * signum);
 
-        if let None = timeout.get() {
+        if let None = debounce.get() {
             if let Some(page_result) = page_result.get() {
                 let handle = set_timeout_with_handle(
                     move || {
@@ -121,13 +152,20 @@ pub fn ContentLines() -> impl IntoView {
                         };
                         if page_result.start_line != new_line {
                             log!("Updating start_line by wheel to: {}", new_line);
+                            set_tail.update_untracked(move |current| {
+                                if page_result.start_line > new_line {
+                                    *current = false
+                                } else if new_line + page_size.get() > page_result.total_lines {
+                                    *current = true
+                                }
+                            });
                             set_start_line.set(new_line);
                         }
-                        set_timeout.set(None);
+                        set_debounce.set(None);
                     },
                     Duration::from_millis(DEBOUNCE_MS)
                 ).ok();
-                set_timeout.set(handle);
+                set_debounce.set(handle);
             }
         }
     };
@@ -160,6 +198,11 @@ pub fn ContentLines() -> impl IntoView {
                 { move || Suspend::new(async move {
                     log_page.await.map(|page_result| {
                         set_page_result.set(Some(page_result.clone()));
+                        if tail.get() && follow.get() {
+                            set_timeout(move || set_page_size.notify(), Duration::from_secs(1));
+                        } else {
+                            update_tail(page_result.start_line);
+                        }
                         view! {
                             <ul>
                                 { page_result.lines.into_iter().enumerate().map(|(i, line)| view! {

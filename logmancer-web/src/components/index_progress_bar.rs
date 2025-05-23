@@ -1,13 +1,13 @@
 use crate::components::context::LogViewContext;
 use leptos::context::use_context;
-use leptos::prelude::{set_timeout, ClassAttribute, GlobalAttributes, Notify, StyleAttribute, Suspend, Transition};
+use leptos::prelude::*;
 use leptos::*;
 use std::time::Duration;
 
 #[component]
 pub fn IndexProgressBar() -> impl IntoView {
     let LogViewContext {
-        set_start_line,
+        set_page_size,
         log_page,
         ..
     } = use_context().expect("");
@@ -17,7 +17,7 @@ pub fn IndexProgressBar() -> impl IntoView {
             { move || Suspend::new(async move {
                 log_page.await.map(|page_result| {
                     if page_result.indexing_progress < 1.0 {
-                        set_timeout(move || set_start_line.notify(), Duration::from_secs(1))
+                        set_timeout(move || set_page_size.notify(), Duration::from_secs(1))
                     }
                     view! {
                         <div
