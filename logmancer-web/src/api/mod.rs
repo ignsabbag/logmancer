@@ -10,4 +10,7 @@ pub use config::api_routes;
 pub mod open_server_file;
 
 #[cfg(feature = "ssr")]
+pub mod file_info;
+
+#[cfg(feature = "ssr")]
 pub mod read_page;

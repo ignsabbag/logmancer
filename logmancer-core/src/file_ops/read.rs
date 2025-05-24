@@ -14,6 +14,10 @@ impl<'a> FileReadOps<'a> {
         FileReadOps {log_file}
     }
 
+    pub fn file_path(&self) -> String {
+        self.log_file.path.clone()
+    }
+    
     /// Reads the line number `line_number` from the file.
     pub fn read_line(&self, line_number: usize) -> io::Result<String> {
         if line_number >= self.log_file.index.len() {

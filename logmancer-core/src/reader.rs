@@ -1,5 +1,5 @@
 use crate::handler::LogFileHandler;
-use crate::models::PageResult;
+use crate::models::{FileInfo, PageResult};
 use log::debug;
 use std::cmp::min;
 use std::io::{self};
@@ -13,6 +13,18 @@ impl LogReader {
     pub fn new(path: String) -> io::Result<Self> {
         let file_log_handler = LogFileHandler::new(path)?;
         Ok(LogReader { handler: file_log_handler })
+    }
+    
+    /// Return file_id, path and other info about the open file
+    pub fn file_info(&self) -> io::Result<FileInfo> {
+        let read_ops = self.handler.read_ops();
+        let file_info = FileInfo {
+            path: read_ops.file_path(),
+            total_lines: read_ops.total_lines()?,
+            indexing_progress: read_ops.indexing_progress()?
+        };
+        debug!("{:?}", file_info);
+        Ok(file_info)
     }
 
     /// Reads a page from the file, starting at `start_line` and reading up to `max_lines` lines.

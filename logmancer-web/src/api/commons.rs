@@ -11,6 +11,11 @@ pub struct OpenServerFileResponse {
 }
 
 #[derive(Serialize,Deserialize,Debug)]
+pub struct FileInfoRequest {
+    pub file_id: String
+}
+
+#[derive(Serialize,Deserialize,Debug)]
 pub struct ReadPageRequest {
     pub file_id: String,
     pub start_line: usize,
