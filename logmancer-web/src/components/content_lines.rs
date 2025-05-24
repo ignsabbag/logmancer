@@ -1,4 +1,4 @@
-use crate::components::context::LogViewContext;
+use crate::components::context::{LogFileContext, LogViewContext};
 use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
@@ -20,28 +20,32 @@ const PAGE_DOWN: &str = "PageDown";
 const KEYS: [&str; 4] = [ARROW_DOWN, ARROW_UP, PAGE_DOWN, PAGE_UP];
 
 #[component]
-pub fn ContentLines() -> impl IntoView {
-    let LogViewContext {
-        set_start_line,
-        page_size,
-        set_page_size,
+pub fn ContentLines(context: LogViewContext) -> impl IntoView {
+    let LogFileContext {
         tail,
         set_tail,
         follow,
         set_follow,
-        log_page,
         ..
-    } = use_context().expect("");
+    } = use_context().expect("LogFileContext not found");
+    
+    let LogViewContext {
+        set_start_line,
+        page_size,
+        set_page_size,
+        log_page
+    } = context;
 
     let div_ref: NodeRef<html::Div> = NodeRef::new();
-
-    let (page_result, set_page_result) = signal(None::<PageResult>);
+    
     let (content_width, set_content_width) = signal(2048_f64);
     let (content_height, set_content_height) = signal(1080_f64);
     let (wheel_lines, set_wheel_lines) = signal(0_i32);
     let (debounce, set_debounce) = signal(None::<TimeoutHandle>);
     let (interval, set_interval) = signal(None::<IntervalHandle>);
     let (active_key, set_active_key) = signal(None::<String>);
+
+    let (page_result, set_page_result) = signal(None::<PageResult>);
 
     let update_tail = move |new_line: usize| {
         set_tail.update_untracked(move |current| {

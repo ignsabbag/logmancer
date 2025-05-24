@@ -1,5 +1,5 @@
 use std::time::Duration;
-use crate::components::context::LogViewContext;
+use crate::components::context::{LogFileContext, LogViewContext};
 use leptos::context::use_context;
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -11,14 +11,18 @@ const BASE_LINES: f64 = 10_000.0;
 const LINE_HEIGHT: f64 = 20.0;
 
 #[component]
-pub fn ContentScroll() -> impl IntoView {
+pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
+    let LogFileContext {
+        set_tail,
+        ..
+    } = use_context().expect("");
+
     let LogViewContext {
         set_start_line,
         page_size,
-        set_tail,
         log_page,
         ..
-    } = use_context().expect("");
+    } = context;
 
     let scroll_ref: NodeRef<html::Div> = NodeRef::new();
     let spacer_ref: NodeRef<html::Div> = NodeRef::new();

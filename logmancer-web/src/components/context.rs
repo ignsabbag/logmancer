@@ -1,15 +1,22 @@
-use leptos::prelude::{LocalResource, ReadSignal, ServerFnError, WriteSignal};
+use leptos::prelude::{LocalResource, Memo, ReadSignal, ServerFnError, WriteSignal};
 use logmancer_core::{FileInfo, PageResult};
+
+#[derive(Clone)]
+pub struct LogFileContext {
+    pub file_id: Memo<String>,
+    pub indexing_progress: ReadSignal<f64>,
+    pub set_indexing_progress: WriteSignal<f64>,
+    pub follow: ReadSignal<bool>,
+    pub set_follow: WriteSignal<bool>,
+    pub tail: ReadSignal<bool>,
+    pub set_tail: WriteSignal<bool>,
+    pub log_info: LocalResource<Result<FileInfo,ServerFnError>>
+}
 
 #[derive(Clone)]
 pub struct LogViewContext {
     pub set_start_line: WriteSignal<usize>,
     pub page_size: ReadSignal<usize>,
     pub set_page_size: WriteSignal<usize>,
-    pub tail: ReadSignal<bool>,
-    pub set_tail: WriteSignal<bool>,
-    pub follow: ReadSignal<bool>,
-    pub set_follow: WriteSignal<bool>,
-    pub log_info: LocalResource<Result<FileInfo,ServerFnError>>,
     pub log_page: LocalResource<Result<PageResult,ServerFnError>>
 }
