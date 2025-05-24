@@ -3,15 +3,13 @@ use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
 use leptos::prelude::*;
-use leptos::{component, html, view, IntoView};
-use leptos_use::use_resize_observer;
+use leptos::{component, view, IntoView};
 use logmancer_core::PageResult;
 use std::time::Duration;
 
 const SCROLL_RATIO: f64 = 0.3;
 const DEBOUNCE_MS: u64 = 200;
 const MIN_JUMP: i32 = 3;
-const LINE_HEIGHT: f64 = 20.0;
 
 const ARROW_UP: &str = "ArrowUp";
 const ARROW_DOWN: &str = "ArrowDown";
@@ -36,10 +34,6 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         log_page
     } = context;
 
-    let div_ref: NodeRef<html::Div> = NodeRef::new();
-    
-    let (content_width, set_content_width) = signal(2048_f64);
-    let (content_height, set_content_height) = signal(1080_f64);
     let (wheel_lines, set_wheel_lines) = signal(0_i32);
     let (debounce, set_debounce) = signal(None::<TimeoutHandle>);
     let (interval, set_interval) = signal(None::<IntervalHandle>);
@@ -174,49 +168,34 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         }
     };
 
-    Effect::new(move || {
-        use_resize_observer(div_ref, move |entries, _observer| {
-            let rect = entries[0].content_rect();
-            if content_width.get() != rect.width() {
-                log!("Updating content width to {}", rect.width());
-                set_content_width.set(rect.width());
-            }
-            if content_height.get() != rect.height() {
-                log!("Updating content height to {}", rect.height());
-                set_content_height.set(rect.height());
-
-                let mut lines = (rect.height() / LINE_HEIGHT) as usize;
-                lines = lines.saturating_sub(1);
-                if lines != page_size.get() {
-                    log!("Updating page_size to {}", lines);
-                    set_page_size.set(lines);
-                }
-            }
-        });
-    });
-
     view! {
-        <div node_ref=div_ref on:keydown=on_key_down on:keyup=on_key_up on:wheel=on_wheel
-                tabindex="0" class="content-lines">
-            <Transition>
-                { move || Suspend::new(async move {
-                    log_page.await.map(|page_result| {
-                        set_page_result.set(Some(page_result.clone()));
-                        if tail.get() && follow.get() {
-                            set_timeout(move || set_page_size.notify(), Duration::from_secs(1));
-                        } else {
-                            update_tail(page_result.start_line);
-                        }
-                        view! {
-                            <ul>
-                                { page_result.lines.into_iter().enumerate().map(|(i, line)| view! {
-                                    <li><b>{page_result.start_line + i + 1}</b> | {line}</li>
-                                }).collect::<Vec<_>>() }
-                            </ul>
-                        }
-                    })
-                })}
-            </Transition>
-        </div>
+        <Transition>
+            { move || Suspend::new(async move {
+                log_page.await.map(|page_result| {
+                    set_page_result.set(Some(page_result.clone()));
+                    if tail.get() && follow.get() {
+                        set_timeout(move || set_page_size.notify(), Duration::from_secs(1));
+                    } else {
+                        update_tail(page_result.start_line);
+                    }
+                    view! {
+                        <div class="line-numbers">
+                            { (0..page_result.lines.len()).map(|i| view! {
+                                <div><b>{page_result.start_line + i + 1}</b></div>
+                            }).collect::<Vec<_>>() }
+                        </div>
+                        <div
+                            class="text-lines" tabindex="0"
+                            on:keydown=on_key_down on:keyup=on_key_up
+                            on:wheel=on_wheel
+                        >
+                            { page_result.lines.into_iter().map(|line| view! {
+                                <div>{line}</div>
+                            }).collect::<Vec<_>>() }
+                        </div>
+                    }
+                })
+            })}
+        </Transition>
     }
 }
