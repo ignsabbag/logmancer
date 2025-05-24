@@ -33,7 +33,7 @@ pub fn LogView() -> impl IntoView {
     });
 
     view! {
-        <MainPane />
         <IndexProgressBar />
+        <MainPane />
     }
 }
