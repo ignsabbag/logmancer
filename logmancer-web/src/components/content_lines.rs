@@ -3,7 +3,7 @@ use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
 use leptos::prelude::*;
-use leptos::{component, view, IntoView};
+use leptos::{component, html, view, IntoView};
 use logmancer_core::PageResult;
 use std::time::Duration;
 
@@ -33,6 +33,9 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         set_page_size,
         log_page
     } = context;
+
+    let div_ref: NodeRef<html::Div> = NodeRef::new();
+    let (max_width, set_max_width) = signal(0);
 
     let (wheel_lines, set_wheel_lines) = signal(0_i32);
     let (debounce, set_debounce) = signal(None::<TimeoutHandle>);
@@ -168,6 +171,20 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         }
     };
 
+    Effect::new(move || {
+        page_result.track();
+        if let Some(div) = div_ref.get() {
+            let max_width = max_width.get();
+            request_animation_frame(move || {
+                if div.scroll_width() > max_width {
+                    set_max_width.set(div.scroll_width());
+                    (*div).style().set_property("min-width", format!("{}px", div.scroll_width()).as_str()).unwrap();
+                }
+            });
+        }
+    });
+
+
     view! {
         <Transition>
             { move || Suspend::new(async move {
@@ -185,6 +202,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                             }).collect::<Vec<_>>() }
                         </div>
                         <div
+                            node_ref=div_ref
                             class="text-lines" tabindex="0"
                             on:keydown=on_key_down on:keyup=on_key_up
                             on:wheel=on_wheel
