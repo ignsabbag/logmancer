@@ -3,9 +3,10 @@ use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{LogFileContext, LogViewContext};
 use leptos::context::use_context;
+use leptos::html::Div;
 use leptos::leptos_dom::log;
-use leptos::prelude::{signal, ClassAttribute, Effect, ElementChild, Get, LocalResource, NodeRef, NodeRefAttribute, Set};
-use leptos::{component, html, view, IntoView};
+use leptos::prelude::*;
+use leptos::{component, view, IntoView};
 use leptos_use::use_resize_observer;
 
 const LINE_HEIGHT: f64 = 15.0;
@@ -19,7 +20,7 @@ pub fn MainPane() -> impl IntoView {
         ..
     } = use_context().expect("");
 
-    let div_ref: NodeRef<html::Div> = NodeRef::new();
+    let div_ref = NodeRef::<Div>::new();    
     let (content_width, set_content_width) = signal(2048_f64);
     let (content_height, set_content_height) = signal(1080_f64);
 
@@ -38,22 +39,22 @@ pub fn MainPane() -> impl IntoView {
 
     Effect::new(move || {
         use_resize_observer(div_ref, move |entries, _observer| {
-            let rect = entries[0].content_rect();
-            if content_width.get() != rect.width() {
-                log!("Updating content width to {}", rect.width());
-                set_content_width.set(rect.width());
-            }
-            if content_height.get() != rect.height() {
-                log!("Updating content height to {}", rect.height());
-                set_content_height.set(rect.height());
-
-                let lines = (rect.height() / LINE_HEIGHT) as usize;
-                if lines != page_size.get() {
-                    log!("Updating page_size to {}", lines);
-                    set_page_size.set(lines);
+                let rect = entries[0].content_rect();
+                if content_width.get() != rect.width() {
+                    log!("Updating content width to {}", rect.width());
+                    set_content_width.set(rect.width());
                 }
-            }
-        });
+                if content_height.get() != rect.height() {
+                    log!("Updating content height to {}", rect.height());
+                    set_content_height.set(rect.height());
+
+                    let lines = (rect.height() / LINE_HEIGHT) as usize;
+                    if lines != page_size.get() {
+                        log!("Updating page_size to {}", lines);
+                        set_page_size.set(lines);
+                    }
+                }
+            });
     });
     
     view! {

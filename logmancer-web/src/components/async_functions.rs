@@ -25,9 +25,9 @@ pub async fn fetch_page(file_id: String, start_line: usize, max_lines: usize, ta
     };
     let result = request
         .send()
-        .await.map_err(|e| ServerFnError::WrappedServerError(e))?
+        .await?
         .json::<PageResult>()
-        .await.map_err(|e| ServerFnError::WrappedServerError(e))?;
+        .await?;
     Ok(result)
 }
 
@@ -41,8 +41,8 @@ pub async fn fetch_info(file_id: String) -> Result<FileInfo, ServerFnError> {
         });
     let result = request
         .send()
-        .await.map_err(|e| ServerFnError::WrappedServerError(e))?
+        .await?
         .json::<FileInfo>()
-        .await.map_err(|e| ServerFnError::WrappedServerError(e))?;
+        .await?;
     Ok(result)
 }

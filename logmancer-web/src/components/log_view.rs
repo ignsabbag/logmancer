@@ -1,8 +1,7 @@
 use crate::components::context::LogFileContext;
 use crate::components::index_progress_bar::IndexProgressBar;
 use crate::components::main_pane::MainPane;
-use leptos::prelude::{provide_context, Memo};
-use leptos::prelude::{signal, Get, LocalResource};
+use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_router::hooks::use_params_map;
 use crate::components::async_functions::fetch_info;
