@@ -16,7 +16,7 @@ pub fn LogView() -> impl IntoView {
     let (tail, set_tail) = signal(false);
 
     let log_info = LocalResource::new(move || {
-        indexing_progress.get();
+        indexing_progress.track();
         fetch_info(file_id.get())
     });
 

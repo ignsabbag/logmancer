@@ -29,7 +29,8 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
 
     let (programmatic_scroll, set_programmatic_scroll) = signal(false);
     let (page_result, set_page_result) = signal(None::<PageResult>);
-    let (debounce, set_debounce) = signal::<Option<TimeoutHandle>>(None);
+    let (scroll_debounce, set_scroll_debounce) = signal::<Option<TimeoutHandle>>(None);
+    let (index_debounce, set_index_debounce) = signal::<Option<TimeoutHandle>>(None);
 
     let update_tail = move |new_line: usize, page_result: PageResult| {
         set_tail.update_untracked(move |current| {
@@ -50,7 +51,7 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
 
             if let Some(page_result) = page_result.get() {
                 log!("Scroll detected: {}", scroll.scroll_top());
-                if None == debounce.get() {
+                if None == scroll_debounce.get() {
                     let timeout_handle = set_timeout_with_handle(
                         move || {
                             let ratio = page_result.total_lines as f64 * scroll.scroll_top() as f64 / scroll.scroll_height() as f64;
@@ -61,11 +62,11 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
                                 update_tail(approx_line, page_result);
                                 set_start_line.set(approx_line);
                             }
-                            set_debounce.set(None);
+                            set_scroll_debounce.set(None);
                         },
                         Duration::from_millis(300)
                     ).ok();
-                    set_debounce.set(timeout_handle);
+                    set_scroll_debounce.set(timeout_handle);
                 }
             }
         }
@@ -97,6 +98,21 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
             }
 
             set_timeout(move || set_programmatic_scroll.set(false), Duration::from_millis(50));
+        }
+    });
+    
+    Effect::new(move || {
+        if let Some(page_result) = page_result.get() {
+            if page_result.indexing_progress < 1.0 && None == index_debounce.get() {
+                let handle = set_timeout_with_handle(
+                    move || {
+                        set_start_line.notify();
+                        set_index_debounce.set(None);
+                    }, 
+                    Duration::from_secs(1)
+                ).ok();
+                set_index_debounce.set(handle);
+            }
         }
     });
 
