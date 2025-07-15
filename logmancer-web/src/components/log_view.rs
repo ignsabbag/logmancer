@@ -22,7 +22,6 @@ pub fn LogView() -> impl IntoView {
 
     provide_context(LogFileContext {
         file_id,
-        indexing_progress,
         set_indexing_progress,
         tail,
         set_tail,

@@ -1,50 +1,25 @@
 [package]
-name = "logmancer-web"
+name = "logmancer-desktop"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-crate-type = ["cdylib", "rlib"]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "logmancer_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
-logmancer-core = { path = "../logmancer-core" }
-leptos = { version = "0.8.2" }
-leptos_router = { version = "0.8.2" }
-leptos-use = { version = "0.16.0-beta2", features = ["use_resize_observer"] }
-axum = { version = "0.8.4", optional = true }
-serde = {  version = "1.0.219", features = ["derive"] }
-console_error_panic_hook = { version = "0.1", optional = true}
-leptos_axum = { version = "0.8.2", optional = true }
-leptos_meta = { version = "0.8.2" }
-tokio = { version = "1", features = ["rt-multi-thread"], optional = true }
-wasm-bindgen = { version = "=0.2.100", optional = true }
-reqwest = { version = "0.12.18", features = ["json"] }
-wasm-bindgen-futures = "0.4.50"
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+logmancer-web = { path = "../logmancer-web", features = ["ssr"] }
 
-[features]
-hydrate = [
-    "logmancer-core/wasm",
-    "leptos/hydrate",
-    "dep:console_error_panic_hook",
-    "dep:wasm-bindgen",
-]
-ssr = [
-    "dep:axum",
-    "dep:tokio",
-    "dep:leptos_axum",
-    "leptos/ssr",
-    "leptos_meta/ssr",
-    "leptos_router/ssr",
-]
-external-server = []
-
-# Defines a size-optimized profile for the WASM bundle in release mode
-[profile.release]
-inherits = "release"
-opt-level = 'z'
-lto = true
-codegen-units = 1
-panic = "abort"
 
 [package.metadata.leptos]
 # The name used by wasm-bindgen/cargo-leptos for the JS/WASM bundle. Defaults to the crate name

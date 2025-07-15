@@ -2,9 +2,11 @@ use leptos::prelude::{LocalResource, Memo, ReadSignal, ServerFnError, WriteSigna
 use logmancer_core::{FileInfo, PageResult};
 
 #[derive(Clone)]
+pub struct Port(pub u16);
+
+#[derive(Clone)]
 pub struct LogFileContext {
     pub file_id: Memo<String>,
-    pub indexing_progress: ReadSignal<f64>,
     pub set_indexing_progress: WriteSignal<f64>,
     pub follow: ReadSignal<bool>,
     pub set_follow: WriteSignal<bool>,
