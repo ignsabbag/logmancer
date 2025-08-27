@@ -5,9 +5,11 @@ use std::io;
 /// Holds mmap and index of the file. It's no thread safe.
 pub struct LogFile {
     pub path: String,
-    pub index: Vec<usize>,
     pub mmap: Mmap,
-    pub size: u64
+    pub size: u64,
+    pub index: Vec<usize>,
+    pub filter: Vec<bool>,
+    pub regex: Option<String>
 }
 
 impl LogFile {
@@ -18,9 +20,11 @@ impl LogFile {
         index.push(0);
         Ok(LogFile {
             path,
-            index,
             mmap: unsafe { Mmap::map(&file)? },
-            size: file.metadata()?.len()
+            size: file.metadata()?.len(),
+            index,
+            filter: Vec::<bool>::new(),
+            regex: None
         })
     }
 

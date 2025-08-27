@@ -40,10 +40,24 @@ impl<'a> FileReadOps<'a> {
         Ok(String::from_utf8_lossy(bytes).trim_end().to_owned())
     }
 
+    pub fn read_filter_line(&self, line_number: usize) -> io::Result<Option<String>> {
+        if self.log_file.filter[line_number] {
+            Ok(Some(self.read_line(line_number)?))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Returns the total number of lines indexed.
     /// This may not be the total number of lines in the file if indexing is in progress.
     pub fn total_lines(&self) -> io::Result<usize> {
         Ok(self.log_file.index.len())
+    }
+
+    /// Returns the total number of lines indexed.
+    /// This may not be the total number of lines in the file if indexing is in progress.
+    pub fn filterd_lines(&self) -> io::Result<usize> {
+        Ok(self.log_file.filter.len())
     }
 
     pub fn indexing_progress(&self) -> io::Result<f64> {
@@ -53,5 +67,39 @@ impl<'a> FileReadOps<'a> {
         }
         let indexed = *self.log_file.index.last().unwrap();
         Ok(indexed as f64 / file_size as f64)
+    }
+
+    pub fn filter_indexing_progress(&self) -> io::Result<f64> {
+        let file_size = self.log_file.mmap.len();
+        if file_size == 0 {
+            return Ok(1.0);
+        }
+        let indexed = self.log_file.index[self.log_file.filter.len()];
+        Ok(indexed as f64 / file_size as f64)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::log_file::LogFile;
+    use std::fs::File;
+    use std::io::Write;
+    use std::sync::RwLock;
+
+    #[test]
+    fn test_read_line() {
+        // Prepara un archivo temporal
+        let path = "test_log.txt";
+        let mut file = File::create(path).unwrap();
+        writeln!(file, "line1").unwrap();
+
+        let log_file = LogFile::new(path.to_string()).unwrap();
+        let lock = RwLock::new(log_file);
+        let read_ops = FileReadOps::new(lock.read().unwrap());
+
+        assert_eq!(read_ops.read_line(0).unwrap(), "line1");
+
+        std::fs::remove_file(path).unwrap();
     }
 }
