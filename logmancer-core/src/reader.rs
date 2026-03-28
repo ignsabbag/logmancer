@@ -5,23 +5,24 @@ use std::cmp::min;
 use std::io::{self};
 
 pub struct LogReader {
-    handler: LogFileHandler
+    handler: LogFileHandler,
 }
 
 impl LogReader {
-
     pub fn new(path: String) -> io::Result<Self> {
         let file_log_handler = LogFileHandler::new(path)?;
-        Ok(LogReader { handler: file_log_handler })
+        Ok(LogReader {
+            handler: file_log_handler,
+        })
     }
-    
+
     /// Return file_id, path and other info about the open file
     pub fn file_info(&self) -> io::Result<FileInfo> {
         let read_ops = self.handler.read_ops();
         let file_info = FileInfo {
             path: read_ops.file_path(),
             total_lines: read_ops.total_lines()?,
-            indexing_progress: read_ops.indexing_progress()?
+            indexing_progress: read_ops.indexing_progress()?,
         };
         debug!("{:?}", file_info);
         Ok(file_info)
@@ -37,10 +38,11 @@ impl LogReader {
         for current_line in from_line..to_line {
             lines.push(read_ops.read_line(current_line)?);
         }
-        Ok(PageResult { lines,
+        Ok(PageResult {
+            lines,
             start_line: from_line,
             total_lines: read_ops.total_lines()?,
-            indexing_progress: read_ops.indexing_progress()?
+            indexing_progress: read_ops.indexing_progress()?,
         })
     }
 
@@ -60,7 +62,7 @@ impl LogReader {
             lines,
             start_line,
             total_lines: read_ops.total_lines()?,
-            indexing_progress: read_ops.indexing_progress()?
+            indexing_progress: read_ops.indexing_progress()?,
         })
     }
 
@@ -69,22 +71,25 @@ impl LogReader {
     }
 
     pub fn read_filter(&mut self, start_line: usize, max_lines: usize) -> io::Result<PageResult> {
-        debug!("Reading filter from line {} to max {}", start_line, max_lines);
+        debug!(
+            "Reading filter from line {} to max {}",
+            start_line, max_lines
+        );
         let read_ops = self.handler.read_ops();
-        
+
         let mut current_line = start_line;
         let mut lines = Vec::with_capacity(max_lines);
-        while lines.len() < max_lines && current_line < read_ops.total_lines()? {
+        while lines.len() < max_lines && current_line < read_ops.filtered_lines()? {
             if let Some(line) = read_ops.read_filter_line(current_line)? {
                 lines.push(line);
             }
             current_line += 1;
-
         }
-        Ok(PageResult { lines,
+        Ok(PageResult {
+            lines,
             start_line,
-            total_lines: read_ops.filterd_lines()?,
-            indexing_progress: read_ops.filter_indexing_progress()?
+            total_lines: read_ops.filtered_lines()?,
+            indexing_progress: read_ops.filter_indexing_progress()?,
         })
     }
 
@@ -108,7 +113,7 @@ impl LogReader {
             lines,
             start_line: current_line,
             total_lines: read_ops.total_lines()?,
-            indexing_progress: read_ops.indexing_progress()?
+            indexing_progress: read_ops.indexing_progress()?,
         })
     }
 }
