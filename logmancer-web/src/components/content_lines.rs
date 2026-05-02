@@ -26,12 +26,12 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         set_follow,
         ..
     } = use_context().expect("LogFileContext not found");
-    
+
     let LogViewContext {
         set_start_line,
         page_size,
         set_page_size,
-        log_page
+        log_page,
     } = context;
 
     let div_ref: NodeRef<html::Div> = NodeRef::new();
@@ -65,29 +65,29 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                 let new_line = page_result.start_line.saturating_sub(MIN_JUMP as usize);
                 update_tail(new_line);
                 set_start_line.set(new_line);
-            },
+            }
             ARROW_DOWN => {
                 let new_line = page_result.start_line.saturating_add(MIN_JUMP as usize);
                 update_tail(new_line);
                 set_start_line.set(new_line);
-            },
+            }
             PAGE_UP => {
                 let new_line = page_result.start_line.saturating_sub(page_size.get());
                 update_tail(new_line);
                 set_start_line.set(new_line);
-            },
+            }
             PAGE_DOWN => {
                 let new_line = page_result.start_line.saturating_add(page_size.get());
                 update_tail(new_line);
                 set_start_line.set(new_line);
-            },
+            }
             "g" => {
                 update_tail(0);
                 set_start_line.set(0);
-            },
+            }
             "G" => set_tail.set(true),
-            "f"|"F" => set_follow.update(|current| *current = !current.to_owned()),
-            _ => ()
+            "f" | "F" => set_follow.update(|current| *current = !current.to_owned()),
+            _ => (),
         }
     };
 
@@ -99,11 +99,14 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
             }
             set_active_key.set(Some(key.clone()));
 
-            let result = set_interval_with_handle(move || {
-                if let Some(key) = active_key.get() {
-                    process_key(&key)
-                }
-            }, Duration::from_millis(DEBOUNCE_MS));
+            let result = set_interval_with_handle(
+                move || {
+                    if let Some(key) = active_key.get() {
+                        process_key(&key)
+                    }
+                },
+                Duration::from_millis(DEBOUNCE_MS),
+            );
 
             if let Ok(handle) = result {
                 set_interval.set(Some(handle));
@@ -145,10 +148,14 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         let delta_lines = wheel_lines.get();
                         let new_line = if delta_lines < 0 {
                             log!("Scrolling up {} lines", delta_lines);
-                            page_result.start_line.saturating_sub(delta_lines.abs() as usize)
+                            page_result
+                                .start_line
+                                .saturating_sub(delta_lines.abs() as usize)
                         } else {
                             log!("Scrolling down {} lines", delta_lines);
-                            page_result.start_line.saturating_add(delta_lines as usize)
+                            page_result
+                                .start_line
+                                .saturating_add(delta_lines as usize)
                                 .min(page_result.total_lines.saturating_sub(page_size.get()))
                         };
                         if page_result.start_line != new_line {
@@ -164,8 +171,9 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         }
                         set_debounce.set(None);
                     },
-                    Duration::from_millis(DEBOUNCE_MS)
-                ).ok();
+                    Duration::from_millis(DEBOUNCE_MS),
+                )
+                .ok();
                 set_debounce.set(handle);
             }
         }
@@ -178,12 +186,14 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
             request_animation_frame(move || {
                 if div.scroll_width() > max_width {
                     set_max_width.set(div.scroll_width());
-                    (*div).style().set_property("min-width", format!("{}px", div.scroll_width()).as_str()).unwrap();
+                    (*div)
+                        .style()
+                        .set_property("min-width", format!("{}px", div.scroll_width()).as_str())
+                        .unwrap();
                 }
             });
         }
     });
-
 
     view! {
         <Transition>

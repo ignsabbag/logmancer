@@ -77,18 +77,25 @@ impl LogReader {
         );
         let read_ops = self.handler.read_ops();
 
-        let mut current_line = start_line;
+        let total_lines = read_ops.filtered_lines()?;
+        let processed_lines = read_ops.processed_filter_lines()?;
+        let mut matched_lines = 0;
+        let mut current_line = 0;
         let mut lines = Vec::with_capacity(max_lines);
-        while lines.len() < max_lines && current_line < read_ops.filtered_lines()? {
+
+        while lines.len() < max_lines && current_line < processed_lines {
             if let Some(line) = read_ops.read_filter_line(current_line)? {
-                lines.push(line);
+                if matched_lines >= start_line {
+                    lines.push(line);
+                }
+                matched_lines += 1;
             }
             current_line += 1;
         }
         Ok(PageResult {
             lines,
             start_line,
-            total_lines: read_ops.filtered_lines()?,
+            total_lines,
             indexing_progress: read_ops.filter_indexing_progress()?,
         })
     }
@@ -115,5 +122,46 @@ impl LogReader {
             total_lines: read_ops.total_lines()?,
             indexing_progress: read_ops.indexing_progress()?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs::File;
+    use std::io::Write;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_file_path(name: &str) -> PathBuf {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("logmancer-{name}-{suffix}.log"))
+    }
+
+    #[test]
+    fn read_filter_uses_matched_line_indexes() {
+        let path = temp_file_path("filter-pagination");
+        let mut file = File::create(&path).unwrap();
+        writeln!(file, "alpha").unwrap();
+        writeln!(file, "beta match").unwrap();
+        writeln!(file, "gamma").unwrap();
+        writeln!(file, "delta match").unwrap();
+        drop(file);
+
+        let mut reader = LogReader::new(path.to_string_lossy().into_owned()).unwrap();
+        reader.filter("match".to_string());
+
+        let first_page = reader.read_filter(0, 1).unwrap();
+        assert_eq!(first_page.total_lines, 2);
+        assert_eq!(first_page.lines, vec!["beta match"]);
+
+        let second_page = reader.read_filter(1, 1).unwrap();
+        assert_eq!(second_page.total_lines, 2);
+        assert_eq!(second_page.lines, vec!["delta match"]);
+
+        std::fs::remove_file(path).unwrap();
     }
 }
