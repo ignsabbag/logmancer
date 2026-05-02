@@ -7,5 +7,5 @@ mod worker;
 
 pub use reader::LogReader;
 pub use models::file_info::FileInfo;
-pub use models::page_result::PageResult;
+pub use models::page_result::{PageLine, PageResult};
 pub use registry::LogRegistry;

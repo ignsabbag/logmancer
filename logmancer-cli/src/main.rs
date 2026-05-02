@@ -94,11 +94,15 @@ fn main() -> std::io::Result<()> {
             print_row!(1, "{}", "-".repeat(columns as usize));
 
             // Lines
-            let last_line = page_result.start_line + page_size;
+            let last_line = page_result
+                .lines
+                .last()
+                .map(|line| line.number)
+                .unwrap_or(page_result.start_line + page_size);
             let left_offset = last_line.to_string().len() + 1;
             for (i, line) in page_result.lines.iter().enumerate() {
-                print_row!(i + 2, "{:<left_offset$}{} {}", page_first_line + i, "|",
-                    trunc_str(line.trim_end(), columns as usize - left_offset - 2));
+                print_row!(i + 2, "{:<left_offset$}{} {}", line.number, "|",
+                    trunc_str(line.text.trim_end(), columns as usize - left_offset - 2));
             }
 
             last_page_result = Some(page_result);

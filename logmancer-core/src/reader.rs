@@ -1,5 +1,5 @@
 use crate::handler::LogFileHandler;
-use crate::models::{FileInfo, PageResult};
+use crate::models::{FileInfo, PageLine, PageResult};
 use log::debug;
 use std::cmp::min;
 use std::io::{self};
@@ -36,7 +36,10 @@ impl LogReader {
         let from_line = to_line.saturating_sub(max_lines);
         let mut lines = Vec::with_capacity(max_lines);
         for current_line in from_line..to_line {
-            lines.push(read_ops.read_line(current_line)?);
+            lines.push(PageLine {
+                number: current_line + 1,
+                text: read_ops.read_line(current_line)?,
+            });
         }
         Ok(PageResult {
             lines,
@@ -56,7 +59,10 @@ impl LogReader {
         let start_line = read_ops.total_lines()? - max_lines;
         let mut lines = Vec::with_capacity(max_lines);
         for current_line in start_line..read_ops.total_lines()? {
-            lines.push(read_ops.read_line(current_line)?);
+            lines.push(PageLine {
+                number: current_line + 1,
+                text: read_ops.read_line(current_line)?,
+            });
         }
         Ok(PageResult {
             lines,
@@ -86,7 +92,10 @@ impl LogReader {
         while lines.len() < max_lines && current_line < processed_lines {
             if let Some(line) = read_ops.read_filter_line(current_line)? {
                 if matched_lines >= start_line {
-                    lines.push(line);
+                    lines.push(PageLine {
+                        number: current_line + 1,
+                        text: line,
+                    });
                 }
                 matched_lines += 1;
             }
@@ -112,7 +121,10 @@ impl LogReader {
         while lines.len() < max_lines && current_line > 0 {
             current_line -= 1;
             if let Some(line) = read_ops.read_filter_line(current_line)? {
-                lines.push(line);
+                lines.push(PageLine {
+                    number: current_line + 1,
+                    text: line,
+                });
             }
         }
         lines.reverse();
@@ -131,6 +143,8 @@ mod tests {
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
+    use std::thread::sleep;
+    use std::time::Duration;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_file_path(name: &str) -> PathBuf {
@@ -156,11 +170,58 @@ mod tests {
 
         let first_page = reader.read_filter(0, 1).unwrap();
         assert_eq!(first_page.total_lines, 2);
-        assert_eq!(first_page.lines, vec!["beta match"]);
+        assert_eq!(
+            first_page.lines,
+            vec![PageLine {
+                number: 2,
+                text: "beta match".to_string(),
+            }]
+        );
 
         let second_page = reader.read_filter(1, 1).unwrap();
         assert_eq!(second_page.total_lines, 2);
-        assert_eq!(second_page.lines, vec!["delta match"]);
+        assert_eq!(
+            second_page.lines,
+            vec![PageLine {
+                number: 4,
+                text: "delta match".to_string(),
+            }]
+        );
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn read_page_exposes_real_source_line_numbers() {
+        let path = temp_file_path("read-page-line-numbers");
+        let mut file = File::create(&path).unwrap();
+        writeln!(file, "zero").unwrap();
+        writeln!(file, "one").unwrap();
+        writeln!(file, "two").unwrap();
+        drop(file);
+
+        let mut reader = LogReader::new(path.to_string_lossy().into_owned()).unwrap();
+        for _ in 0..10 {
+            if reader.file_info().unwrap().total_lines >= 3 {
+                break;
+            }
+            sleep(Duration::from_millis(50));
+        }
+        let page = reader.read_page(1, 2).unwrap();
+
+        assert_eq!(
+            page.lines,
+            vec![
+                PageLine {
+                    number: 2,
+                    text: "one".to_string(),
+                },
+                PageLine {
+                    number: 3,
+                    text: "two".to_string(),
+                },
+            ]
+        );
 
         std::fs::remove_file(path).unwrap();
     }

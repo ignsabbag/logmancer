@@ -205,10 +205,15 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                     } else {
                         update_tail(page_result.start_line);
                     }
+                    let (line_numbers, line_texts): (Vec<_>, Vec<_>) = page_result
+                        .lines
+                        .into_iter()
+                        .map(|line| (line.number, line.text))
+                        .unzip();
                     view! {
                         <div class="line-numbers">
-                            { (0..page_result.lines.len()).map(|i| view! {
-                                <div><b>{page_result.start_line + i + 1}</b></div>
+                            { line_numbers.into_iter().map(|line_number| view! {
+                                <div><b>{line_number}</b></div>
                             }).collect::<Vec<_>>() }
                         </div>
                         <div
@@ -217,8 +222,8 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                             on:keydown=on_key_down on:keyup=on_key_up
                             on:wheel=on_wheel
                         >
-                            { page_result.lines.into_iter().map(|line| view! {
-                                <div>{line}</div>
+                            { line_texts.into_iter().map(|line_text| view! {
+                                <div>{line_text}</div>
                             }).collect::<Vec<_>>() }
                         </div>
                     }
