@@ -9,20 +9,29 @@
   text-align: center;
 }
 
-#progress-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
+.progress-bar {
   height: 4px;
   background-color: #3498db;
   width: 0;
   transition: width 1s ease, opacity 0.5s ease;
-  z-index: 9999;
   opacity: 1;
 }
 
-#progress-bar.hidden {
+.progress-bar.hidden {
   opacity: 0;
+}
+
+.progress-bar--global {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+}
+
+.progress-bar--local {
+  width: 100%;
+  position: relative;
+  flex-shrink: 0;
 }
 
 .main-pane {

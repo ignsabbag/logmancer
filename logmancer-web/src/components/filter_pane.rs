@@ -2,6 +2,7 @@ use crate::components::async_functions::{apply_filter as apply_filter_fetch, fet
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{LogFileContext, LogViewContext};
+use crate::components::pane_index_progress::PaneIndexProgress;
 use leptos::context::use_context;
 use leptos::ev::KeyboardEvent;
 use leptos::html::Div;
@@ -24,6 +25,7 @@ pub fn FilterPane() -> impl IntoView {
 
     let (filter_text, set_filter_text) = signal(String::new());
     let (filter_applied, set_filter_applied) = signal(false);
+    let (indexing_progress, set_indexing_progress) = signal(0_f64);
     
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
@@ -47,7 +49,9 @@ pub fn FilterPane() -> impl IntoView {
         set_start_line,
         page_size,
         set_page_size,
-        log_page: filter_page
+        log_page: filter_page,
+        indexing_progress,
+        set_indexing_progress,
     };
 
     let on_input = move |ev: leptos::ev::Event| {
@@ -65,11 +69,13 @@ pub fn FilterPane() -> impl IntoView {
                 spawn_local(async move {
                     apply_filter_fetch(file_id, text_clone).await.ok();
                     set_filter_applied.set(true);
+                    set_indexing_progress.set(0.0);
                     // Reset scroll position when filter changes
                     set_start_line.set(0);
                 });
             } else {
                 set_filter_applied.set(false);
+                set_indexing_progress.set(0.0);
             }
         }
     };
@@ -97,6 +103,10 @@ pub fn FilterPane() -> impl IntoView {
         filter_applied.track();
         set_start_line.notify();
     });
+
+    let filter_progress_hidden = Signal::derive(move || {
+        !filter_applied.get() || indexing_progress.get() >= 1.0
+    });
     
     view! {
         <div class="filter-pane">
@@ -110,6 +120,11 @@ pub fn FilterPane() -> impl IntoView {
                     on:keydown=on_key_down
                 />
             </div>
+            <PaneIndexProgress
+                context=log_view_context.clone()
+                hidden=filter_progress_hidden
+                variant_class="progress-bar--local"
+            />
             <div node_ref=div_ref class="content">
                 <ContentLines context=log_view_context.clone() />
                 <ContentScroll context=log_view_context.clone() />

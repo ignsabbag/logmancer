@@ -32,6 +32,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         page_size,
         set_page_size,
         log_page,
+        ..
     } = context;
 
     let div_ref: NodeRef<html::Div> = NodeRef::new();
