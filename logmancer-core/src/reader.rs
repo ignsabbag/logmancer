@@ -56,9 +56,10 @@ impl LogReader {
             self.handler.reload();
         }
         let read_ops = self.handler.read_ops();
-        let start_line = read_ops.total_lines()? - max_lines;
+        let total_lines = read_ops.total_lines()?;
+        let start_line = total_lines.saturating_sub(max_lines);
         let mut lines = Vec::with_capacity(max_lines);
-        for current_line in start_line..read_ops.total_lines()? {
+        for current_line in start_line..total_lines {
             lines.push(PageLine {
                 number: current_line + 1,
                 text: read_ops.read_line(current_line)?,
@@ -67,7 +68,7 @@ impl LogReader {
         Ok(PageResult {
             lines,
             start_line,
-            total_lines: read_ops.total_lines()?,
+            total_lines,
             indexing_progress: read_ops.indexing_progress()?,
         })
     }
@@ -132,7 +133,7 @@ impl LogReader {
             lines,
             start_line: current_line,
             total_lines: read_ops.total_lines()?,
-            indexing_progress: read_ops.indexing_progress()?,
+            indexing_progress: read_ops.filter_indexing_progress()?,
         })
     }
 }
@@ -219,6 +220,43 @@ mod tests {
                 PageLine {
                     number: 3,
                     text: "two".to_string(),
+                },
+            ]
+        );
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn tail_handles_files_smaller_than_requested_page() {
+        let path = temp_file_path("tail-underflow");
+        let mut file = File::create(&path).unwrap();
+        writeln!(file, "first").unwrap();
+        write!(file, "second").unwrap();
+        drop(file);
+
+        let mut reader = LogReader::new(path.to_string_lossy().into_owned()).unwrap();
+        for _ in 0..10 {
+            if reader.file_info().unwrap().total_lines >= 2 {
+                break;
+            }
+            sleep(Duration::from_millis(50));
+        }
+
+        let page = reader.tail(50, false).unwrap();
+
+        assert_eq!(page.start_line, 0);
+        assert_eq!(page.total_lines, 2);
+        assert_eq!(
+            page.lines,
+            vec![
+                PageLine {
+                    number: 1,
+                    text: "first".to_string(),
+                },
+                PageLine {
+                    number: 2,
+                    text: "second".to_string(),
                 },
             ]
         );
