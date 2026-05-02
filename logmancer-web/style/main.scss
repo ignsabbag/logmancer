@@ -103,10 +103,16 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+
+  &.resizing {
+    user-select: none;
+    cursor: row-resize;
+  }
 }
 
 .main-pane-container {
-  flex: 7;
+  flex: 0 0 70%;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -116,14 +122,20 @@
   background: #ddd;
   cursor: row-resize;
   flex-shrink: 0;
+  touch-action: none;
   
   &:hover {
+    background: #3498db;
+  }
+
+  .log-view.resizing & {
     background: #3498db;
   }
 }
 
 .filter-pane-container {
-  flex: 3;
+  flex: 0 0 30%;
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
   display: flex;
