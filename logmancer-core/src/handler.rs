@@ -1,66 +1,45 @@
 use crate::file_ops::read::FileReadOps;
 use crate::file_ops::write::FileWriteOps;
 use crate::models::log_file::LogFile;
-use crossbeam_channel::{select, unbounded, Sender};
+use crate::worker::{spawn_reload_worker, spawn_filter_worker};
+use crossbeam_channel::{unbounded, Sender};
 use log::info;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use std::{io, thread, time};
 
-const BLOCK_BYTES: usize = 1024 * 1024; // 1MB
-
 pub struct LogFileHandler {
     log_file: Arc<RwLock<LogFile>>,
-    sender: Sender<()>
+    reload_sender: Sender<()>,
+    filter_sender: Sender<Option<String>>, // New sender for filter thread
 }
 
 impl LogFileHandler {
 
     pub fn new(path: String) -> io::Result<Self> {
-        let (sender, receiver) = unbounded::<()>();
+        let (reload_sender, reload_receiver) = unbounded::<()>();
+        let (filter_sender, filter_receiver) = unbounded::<Option<String>>();
         let log_file = Arc::new(RwLock::new(LogFile::new(path.clone())?));
         info!("File {} loaded", path);
 
-        let mut write_ops = FileWriteOps::new(Arc::clone(&log_file));
+        let reload_write_ops = FileWriteOps::new(Arc::clone(&log_file));
+        let filter_write_ops = FileWriteOps::new(Arc::clone(&log_file));
 
-        thread::spawn(move || {
-            loop {
-                select! {
-                    recv(receiver) -> _ => {
-                        match write_ops.reload() {
-                            Ok(()) => {
-                                loop {
-                                    match write_ops.index_max(BLOCK_BYTES) {
-                                        Ok(end_reached) => {
-                                            if end_reached {
-                                                break;
-                                            }
-                                            Self::wait(1);
-                                        }
-                                        Err(error) => {
-                                            panic!("Error indexing file: {}", error)
-                                        }
-                                    }
-                                }
-                            }
-                            Err(error) => {
-                                panic!("Error reloading file: {}", error)
-                            }
-                        }
-                    }
-                    default(Duration::from_secs(5)) => {
-                    }
-                }
-            }
-        });
+        spawn_reload_worker(reload_write_ops, reload_receiver, filter_sender.clone());
+        spawn_filter_worker(filter_write_ops, filter_receiver);
 
-        sender.send(()).unwrap();
+        reload_sender.send(()).unwrap();
 
-        Ok(LogFileHandler { log_file, sender })
+        Ok(LogFileHandler { log_file, reload_sender, filter_sender })
     }
 
     pub fn reload(&mut self) {
-        self.sender.send(()).unwrap();
+        self.reload_sender.send(()).unwrap();
+        Self::wait(500);
+    }
+
+    pub fn filter(&mut self, regex: Option<String>) {
+        self.filter_sender.send(regex).unwrap(); // Send regex to filter thread
         Self::wait(500);
     }
 

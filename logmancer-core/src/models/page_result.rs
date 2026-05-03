@@ -1,8 +1,14 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct PageLine {
+    pub number: usize,
+    pub text: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PageResult {
-    pub lines: Vec<String>,
+    pub lines: Vec<PageLine>,
     pub start_line: usize,
     pub total_lines: usize,
     pub indexing_progress: f64

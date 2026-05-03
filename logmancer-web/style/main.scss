@@ -9,24 +9,33 @@
   text-align: center;
 }
 
-#progress-bar {
-  position: fixed;
-  top: 0;
-  left: 0;
+.progress-bar {
   height: 4px;
   background-color: #3498db;
   width: 0;
   transition: width 1s ease, opacity 0.5s ease;
-  z-index: 9999;
   opacity: 1;
 }
 
-#progress-bar.hidden {
+.progress-bar.hidden {
   opacity: 0;
 }
 
+.progress-bar--global {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+}
+
+.progress-bar--local {
+  width: 100%;
+  position: relative;
+  flex-shrink: 0;
+}
+
 .main-pane {
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
   font-family: monospace;
   display: flex;
@@ -60,7 +69,8 @@
   white-space: pre;
   display: flex;
   flex-direction: column;
-  min-width: max-content;
+  width: 100%;
+  flex-shrink: 0;
 }
 
 .line-numbers div,
@@ -86,4 +96,76 @@
   width: 1px;
   background: transparent;
   flex-grow: 1;
+}
+
+// Filter panel styles
+.log-view {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+
+  &.resizing {
+    user-select: none;
+    cursor: row-resize;
+  }
+}
+
+.main-pane-container {
+  flex: 0 0 70%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.divider {
+  height: 8px;
+  background: #ddd;
+  cursor: row-resize;
+  flex-shrink: 0;
+  touch-action: none;
+  
+  &:hover {
+    background: #3498db;
+  }
+
+  .log-view.resizing & {
+    background: #3498db;
+  }
+}
+
+.filter-pane-container {
+  flex: 0 0 30%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-pane {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  font-family: monospace;
+}
+
+.filter-input-container {
+  padding: 8px;
+  background: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+.filter-input {
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 14px;
+  font-family: monospace;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  outline: none;
+  
+  &:focus {
+    border-color: #3498db;
+  }
 }
