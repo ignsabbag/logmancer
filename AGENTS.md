@@ -2,7 +2,7 @@
 
 ## Overview
 
-Logmancer is a Rust workspace with multiple crates: `logmancer-core` (core logic), `logmancer-cli` (CLI app), `logmancer-web` (Leptos web app), and `logmancer-desktop` (Tauri desktop app).
+Logmancer is a Rust workspace with multiple crates: `logmancer-core` (core logic), `logmancer-tui` (terminal UI app), `logmancer-web` (Leptos web app), and `logmancer-desktop` (Tauri desktop app).
 
 ---
 
@@ -23,8 +23,8 @@ cargo clippy -- -D warnings
 ### Individual Crates
 ```bash
 # CLI
-cargo build --release -p logmancer-cli
-cargo run --bin logmancer-cli -- /path/to/logfile.log
+cargo build --release -p logmancer-tui
+cargo run --bin logmancer-tui -- /path/to/logfile.log
 
 # Core library
 cargo build --release -p logmancer-core
@@ -142,7 +142,7 @@ cargo test -- --nocapture
 ### Running the Application
 ```bash
 # CLI viewer
-cargo run --bin logmancer-cli -- ./test.log
+cargo run --bin logmancer-tui -- ./test.log
 
 # Web server
 cargo leptos watch --project logmancer-web

@@ -125,8 +125,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: logmancer-cli-${{ matrix.target }}
+          name: logmancer-tui-${{ matrix.target }}
           path: |
             target/${{ matrix.target }}/release/*.exe
-            target/${{ matrix.target }}/release/logmancer-cli
+            target/${{ matrix.target }}/release/logmancer-tui
           retention-days: 7

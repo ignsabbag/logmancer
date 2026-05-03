@@ -14,7 +14,7 @@ A lightweight, cross-platform log viewer written in Rust. Designed for efficienc
   * [Prerequisites](#prerequisites)
   * [Building from Source](#building-from-source)
 * [Usage](#usage)
-  * [logmancer-cli](#logmancer-cli)
+  * [logmancer-tui](#logmancer-tui)
   * [logmancer-web](#logmancer-web)
   * [logmancer-desktop](#logmancer-desktop)
   * [Controls](#controls)
@@ -40,7 +40,7 @@ A lightweight, cross-platform log viewer written in Rust. Designed for efficienc
 Logmancer is structured as a multi-crate workspace:
 
 * **logmancer-core**: Core logic for file indexing, reading, and searching.
-* **logmancer-cli**: Command-line interface application.
+* **logmancer-tui**: Terminal UI application.
 * **logmancer-web**: Web application using Leptos and Axum.
 * **logmancer-desktop**: Desktop application leveraging the web module via Tauri.
 
@@ -80,11 +80,11 @@ Logmancer is structured as a multi-crate workspace:
 
 ## Usage
 
-### logmancer-cli
+### logmancer-tui
 
-Launch the CLI log viewer by specifying a log file path:
+Launch the terminal log viewer by specifying a log file path:
 ```sh
-cargo run --bin logmancer-cli -- /path/to/your/logfile.log
+cargo run --bin logmancer-tui -- /path/to/your/logfile.log
 ```
 
 ### logmancer-web
