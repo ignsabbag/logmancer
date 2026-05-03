@@ -3,72 +3,130 @@ name: Rust
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "uml/**"
+      - "LICENSE"
+      - ".vscode/**"
+      - ".idea/**"
+      - "**/*.log"
   pull_request:
     branches: [ "main" ]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "uml/**"
+      - "LICENSE"
+      - ".vscode/**"
+      - ".idea/**"
+      - "**/*.log"
+
+concurrency:
+  group: rust-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf \
+            librsvg2-dev
+
+      - name: Preflight Linux pkg-config dependencies
+        run: |
+          pkg-config --exists glib-2.0
+          pkg-config --exists gdk-3.0
+          pkg-config --exists gtk+-3.0
+          pkg-config --exists libsoup-3.0
+          pkg-config --exists javascriptcoregtk-4.1
+          pkg-config --exists webkit2gtk-4.1
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: test-${{ runner.os }}
+
+      - name: Run tests
+        run: cargo test --workspace --verbose
+
   build:
     name: Build for ${{ matrix.target }}
+    needs: test
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            ext: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            ext: ".exe"
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Install Linux system dependencies
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          pkg-config \
-          libglib2.0-dev \
-          libgtk-3-dev \
-          libsoup-3.0-dev \
-          libjavascriptcoregtk-4.1-dev \
-          libwebkit2gtk-4.1-dev \
-          patchelf \
-          librsvg2-dev
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf \
+            librsvg2-dev
 
-    - name: Preflight Linux pkg-config dependencies
-      if: runner.os == 'Linux'
-      run: |
-        pkg-config --exists glib-2.0
-        pkg-config --exists gdk-3.0
-        pkg-config --exists gtk+-3.0
-        pkg-config --exists libsoup-3.0
-        pkg-config --exists javascriptcoregtk-4.1
-        pkg-config --exists webkit2gtk-4.1
-    
-    - name: Install Rust
-      uses: actions-rs/toolchain@v1
-      with:
-        toolchain: stable
-        target: ${{ matrix.target }}
-        profile: minimal
-        override: true
-        
-    - name: Build release
-      run: cargo build --release --target ${{ matrix.target }}
-      
-    - name: Run tests
-      run: cargo test --verbose
+      - name: Preflight Linux pkg-config dependencies
+        if: runner.os == 'Linux'
+        run: |
+          pkg-config --exists glib-2.0
+          pkg-config --exists gdk-3.0
+          pkg-config --exists gtk+-3.0
+          pkg-config --exists libsoup-3.0
+          pkg-config --exists javascriptcoregtk-4.1
+          pkg-config --exists webkit2gtk-4.1
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: logmancer-cli-${{ matrix.target }}
-        path: |
-          target/${{ matrix.target }}/release/*.exe
-          target/${{ matrix.target }}/release/logmancer-cli
-        retention-days: 7
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: build-${{ runner.os }}-${{ matrix.target }}
+
+      - name: Build release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: logmancer-cli-${{ matrix.target }}
+          path: |
+            target/${{ matrix.target }}/release/*.exe
+            target/${{ matrix.target }}/release/logmancer-cli
+          retention-days: 7
