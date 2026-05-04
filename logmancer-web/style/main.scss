@@ -4,6 +4,12 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 .home {
   font-family: sans-serif;
   text-align: center;
@@ -103,6 +109,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow: hidden;
 
   &.resizing {
     user-select: none;
