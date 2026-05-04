@@ -60,14 +60,20 @@ pub fn LogView() -> impl IntoView {
         >
             <div
                 class="main-pane-container"
-                style=move || format!("flex: 0 0 {}%;", 100.0 - filter_height_percent.get())
+                style=move || {
+                    let main_height_percent = 100.0 - filter_height_percent.get();
+                    format!("flex: {main_height_percent} {main_height_percent} 0;")
+                }
             >
                 <MainPane />
             </div>
             <div class="divider" on:pointerdown=move |_| set_is_resizing.set(true)></div>
             <div
                 class="filter-pane-container"
-                style=move || format!("flex: 0 0 {}%;", filter_height_percent.get())
+                style=move || {
+                    let filter_height_percent = filter_height_percent.get();
+                    format!("flex: {filter_height_percent} {filter_height_percent} 0;")
+                }
             >
                 <FilterPane />
             </div>

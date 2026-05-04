@@ -116,28 +116,102 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target }},wasm32-unknown-unknown
+
+      - name: Install cargo-leptos
+        run: cargo install cargo-leptos --locked
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: build-${{ runner.os }}-${{ matrix.target }}
 
-      - name: Build release
+      - name: Build release binaries
         run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build web site assets
+        env:
+          LEPTOS_OUTPUT_NAME: logmancer-web
+          LEPTOS_SITE_ROOT: target/site
+        run: cargo leptos build --release --project logmancer-web
+
+      - name: Package Linux artifacts
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          target_dir="target/${{ matrix.target }}/release"
+          package_root="dist/logmancer-${{ matrix.target }}"
+
+          mkdir -p "$package_root"
+          cp "$target_dir/logmancer-web" "$package_root/"
+          cp "$target_dir/logmancer-desktop" "$package_root/"
+          cp "$target_dir/logmancer-tui" "$package_root/"
+          cp -R target/site "$package_root/site"
+
+          cat > "$package_root/run-web.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          export LEPTOS_OUTPUT_NAME=logmancer-web
+          export LEPTOS_SITE_ROOT="$SCRIPT_DIR/site"
+          mkdir -p "$SCRIPT_DIR/logs"
+          export LOGMANCER_LOG_FILE="$SCRIPT_DIR/logs/logmancer-web.log"
+          exec "$SCRIPT_DIR/logmancer-web" "$@"
+          EOF
+
+          cat > "$package_root/run-desktop.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          export LEPTOS_OUTPUT_NAME=logmancer-web
+          export LEPTOS_SITE_ROOT="$SCRIPT_DIR/site"
+          mkdir -p "$SCRIPT_DIR/logs"
+          export LOGMANCER_LOG_FILE="$SCRIPT_DIR/logs/logmancer-desktop.log"
+          exec "$SCRIPT_DIR/logmancer-desktop" "$@"
+          EOF
+
+          chmod +x "$package_root/run-web.sh" "$package_root/run-desktop.sh"
+          (cd dist && zip -r "logmancer-${{ matrix.target }}.zip" "logmancer-${{ matrix.target }}")
+
+      - name: Package Windows artifacts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $targetDir = "target/${{ matrix.target }}/release"
+          $packageRoot = "dist/logmancer-${{ matrix.target }}"
+
+          New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+          Copy-Item "$targetDir/logmancer-web.exe" "$packageRoot/"
+          Copy-Item "$targetDir/logmancer-desktop.exe" "$packageRoot/"
+          Copy-Item "$targetDir/logmancer-tui.exe" "$packageRoot/"
+          Copy-Item "target/site" "$packageRoot/site" -Recurse -Force
+
+          @"
+          @echo off
+          set LEPTOS_OUTPUT_NAME=logmancer-web
+          set LEPTOS_SITE_ROOT=%~dp0site
+          if not exist "%~dp0logs" mkdir "%~dp0logs"
+          set LOGMANCER_LOG_FILE=%~dp0logs\logmancer-web.log
+          "%~dp0logmancer-web.exe" %*
+          "@ | Set-Content -Path "$packageRoot/run-web.cmd"
+
+          @"
+          @echo off
+          set LEPTOS_OUTPUT_NAME=logmancer-web
+          set LEPTOS_SITE_ROOT=%~dp0site
+          if not exist "%~dp0logs" mkdir "%~dp0logs"
+          set LOGMANCER_LOG_FILE=%~dp0logs\logmancer-desktop.log
+          "%~dp0logmancer-desktop.exe" %*
+          "@ | Set-Content -Path "$packageRoot/run-desktop.cmd"
+
+          Compress-Archive -Path "$packageRoot/*" -DestinationPath "dist/logmancer-${{ matrix.target }}.zip" -Force
 
       - name: Upload artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
         with:
-          name: logmancer-binaries-${{ matrix.target }}
-          path: |
-            target/${{ matrix.target }}/release/logmancer-tui
-            target/${{ matrix.target }}/release/logmancer-web
-            target/${{ matrix.target }}/release/logmancer-desktop
-            target/${{ matrix.target }}/release/logmancer-tui.exe
-            target/${{ matrix.target }}/release/logmancer-web.exe
-            target/${{ matrix.target }}/release/logmancer-desktop.exe
+          name: logmancer-package-${{ matrix.target }}
+          path: dist/logmancer-${{ matrix.target }}.zip
           if-no-files-found: error
 
   cleanup-artifacts:
@@ -160,6 +234,7 @@ jobs:
             const currentRunId = context.runId;
             const staleArtifacts = artifacts.filter((artifact) => {
               const isLogmancerBinaryArtifact = artifact.name.startsWith('logmancer-binaries-')
+                || artifact.name.startsWith('logmancer-package-')
                 || artifact.name.startsWith('logmancer-tui-');
 
               return isLogmancerBinaryArtifact
