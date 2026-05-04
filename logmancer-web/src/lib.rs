@@ -12,7 +12,18 @@ pub fn hydrate() {
 
 #[cfg(feature = "ssr")]
 pub async fn start_leptos(port: u16) {
-    use crate::api::config::api_routes;
+    use logmancer_core::LogRegistry;
+    use std::sync::Arc;
+
+    start_leptos_with_registry(port, Arc::new(LogRegistry::new())).await;
+}
+
+#[cfg(feature = "ssr")]
+pub async fn start_leptos_with_registry(
+    port: u16,
+    registry: std::sync::Arc<logmancer_core::LogRegistry>,
+) {
+    use crate::api::config::api_routes_with_registry;
     use crate::app::shell;
     use crate::components::App;
     use axum::Router;
@@ -35,7 +46,7 @@ pub async fn start_leptos(port: u16) {
     let routes = generate_route_list(App);
 
     let app = Router::new()
-        .nest("/api", api_routes())
+        .nest("/api", api_routes_with_registry(registry))
         .leptos_routes(&leptos_options, routes, {
             let leptos_options = leptos_options.clone();
             move || shell(leptos_options.clone())
@@ -54,8 +65,10 @@ pub async fn start_leptos(port: u16) {
 
 #[cfg(feature = "ssr")]
 pub async fn start_axum(port: u16) {
-    use crate::api::config::api_routes;
+    use crate::api::config::api_routes_with_registry;
+    use logmancer_core::LogRegistry;
     use std::net::SocketAddr;
+    use std::sync::Arc;
     use tracing::info;
 
     init_backend_logging();
@@ -66,9 +79,37 @@ pub async fn start_axum(port: u16) {
     // `axum::Server` is a re-export of `hyper::Server`
     info!("Starting API server on http://{}", &addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, api_routes().into_make_service())
-        .await
-        .unwrap();
+    axum::serve(
+        listener,
+        api_routes_with_registry(Arc::new(LogRegistry::new())).into_make_service(),
+    )
+    .await
+    .unwrap();
+}
+
+#[cfg(feature = "ssr")]
+pub fn try_open_initial_file(
+    registry: &std::sync::Arc<logmancer_core::LogRegistry>,
+    initial_path: Option<&str>,
+) -> Option<String> {
+    use tracing::{error, info, warn};
+
+    let Some(path) = initial_path.map(str::trim).filter(|path| !path.is_empty()) else {
+        return None;
+    };
+
+    info!("Attempting to open initial file path={}", path);
+    match registry.open_file(path) {
+        Ok(file_id) => {
+            info!("Initial file opened successfully file_id={}", file_id);
+            Some(file_id)
+        }
+        Err(error) => {
+            warn!("Could not open initial file path={} error={}", path, error);
+            error!("Continuing startup without initial file");
+            None
+        }
+    }
 }
 
 #[cfg(feature = "ssr")]

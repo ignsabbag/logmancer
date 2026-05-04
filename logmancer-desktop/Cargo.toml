@@ -18,6 +18,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
+logmancer-core = { path = "../logmancer-core" }
 logmancer-web = { path = "../logmancer-web", features = ["ssr"] }
 tracing = "0.1"
 

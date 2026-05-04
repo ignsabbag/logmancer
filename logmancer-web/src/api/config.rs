@@ -12,7 +12,7 @@ pub struct AppState {
     pub registry: Arc<LogRegistry>,
 }
 
-pub fn api_routes<T>() -> Router<T> {
+pub fn api_routes_with_registry<T>(registry: Arc<LogRegistry>) -> Router<T> {
     Router::new()
         .route("/open-server-file", post(open_server_file))
         .route("/read-page", get(read_page))
@@ -20,7 +20,9 @@ pub fn api_routes<T>() -> Router<T> {
         .route("/tail", get(tail))
         .route("/apply-filter", post(apply_filter))
         .route("/read-filter-page", get(read_filter_page))
-        .with_state(AppState {
-            registry: Arc::new(LogRegistry::new()),
-        })
+        .with_state(AppState { registry })
+}
+
+pub fn api_routes<T>() -> Router<T> {
+    api_routes_with_registry(Arc::new(LogRegistry::new()))
 }

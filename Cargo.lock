@@ -2887,6 +2887,7 @@ dependencies = [
 name = "logmancer-desktop"
 version = "0.1.0"
 dependencies = [
+ "logmancer-core",
  "logmancer-web",
  "tauri",
  "tauri-build",
