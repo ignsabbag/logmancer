@@ -1,7 +1,4 @@
 #[cfg(feature = "ssr")]
-mod api;
-
-#[cfg(feature = "ssr")]
 #[tokio::main]
 async fn main() {
     use leptos::prelude::*;

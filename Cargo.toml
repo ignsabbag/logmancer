@@ -6,3 +6,11 @@ members = [
     "logmancer-web",
     "logmancer-desktop"
 ]
+
+# Size-optimized profile for the Leptos WASM bundle.
+[profile.wasm-release]
+inherits = "release"
+opt-level = 'z'
+lto = true
+codegen-units = 1
+panic = "abort"
