@@ -30,8 +30,8 @@ pub fn run() {
                 });
                 let window = app.get_webview_window("main").unwrap();
                 let target = match initial_file_id {
-                    Some(file_id) => format!("http://127.0.0.1:{}/log/{}", port, file_id),
-                    None => format!("http://127.0.0.1:{}", port),
+                    Some(file_id) => format!("http://127.0.0.1:{port}/log/{file_id}"),
+                    None => format!("http://127.0.0.1:{port}"),
                 };
                 info!("Navigating desktop window to {}", target);
                 window.navigate(Url::parse(target.as_str()).unwrap())?;

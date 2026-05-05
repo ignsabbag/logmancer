@@ -35,7 +35,7 @@ pub async fn open_server_file(
             error!("Error opening file path={} error={}", trimmed_path, e);
             (
                 StatusCode::BAD_REQUEST,
-                Json(format!("Could not open file '{}': {}", trimmed_path, e)),
+                Json(format!("Could not open file '{trimmed_path}': {e}")),
             )
                 .into_response()
         }

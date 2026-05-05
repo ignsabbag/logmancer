@@ -34,3 +34,9 @@ impl LogRegistry {
         }
     }
 }
+
+impl Default for LogRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}

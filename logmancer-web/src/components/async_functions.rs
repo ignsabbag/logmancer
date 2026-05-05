@@ -8,7 +8,7 @@ use web_sys::{FormData, RequestInit, Response};
 pub async fn fetch_page(file_id: String, start_line: usize, max_lines: usize, tail: bool, follow: bool) -> Result<PageResult, ServerFnError> {
     let base = window().location().origin().unwrap();
     let request = if tail {
-        let url = format!("{}/api/tail", base);
+        let url = format!("{base}/api/tail");
         reqwest::Client::new()
             .get(url)
             .query(&TailRequest {
@@ -17,7 +17,7 @@ pub async fn fetch_page(file_id: String, start_line: usize, max_lines: usize, ta
                 follow
             })
     } else {
-        let url = format!("{}/api/read-page", base);
+        let url = format!("{base}/api/read-page");
         reqwest::Client::new()
             .get(url)
             .query(&ReadPageRequest {
@@ -36,7 +36,7 @@ pub async fn fetch_page(file_id: String, start_line: usize, max_lines: usize, ta
 
 pub async fn apply_filter(file_id: String, filter: String) -> Result<String, ServerFnError> {
     let base = window().location().origin().unwrap();
-    let url = format!("{}/api/apply-filter", base);
+    let url = format!("{base}/api/apply-filter");
     let request = reqwest::Client::new()
         .post(url)
         .json(&ApplyFilterRequest {
@@ -53,7 +53,7 @@ pub async fn apply_filter(file_id: String, filter: String) -> Result<String, Ser
 
 pub async fn fetch_filter_page(file_id: String, start_line: usize, max_lines: usize) -> Result<PageResult, ServerFnError> {
     let base = window().location().origin().unwrap();
-    let url = format!("{}/api/read-filter-page", base);
+    let url = format!("{base}/api/read-filter-page");
     let request = reqwest::Client::new()
         .get(url)
         .query(&ReadFilterRequest {
@@ -74,7 +74,7 @@ pub async fn open_server_file(path: String) -> Result<String, String> {
         .location()
         .origin()
         .map_err(|_| "Could not detect application origin.".to_string())?;
-    let url = format!("{}/api/open-server-file", base);
+    let url = format!("{base}/api/open-server-file");
 
     let response = reqwest::Client::new()
         .post(url)
@@ -122,7 +122,7 @@ pub async fn upload_local_file(file: web_sys::File) -> Result<String, String> {
         .map_err(|_| "Could not detect application origin.".to_string())?;
 
     let fetch_promise = window().fetch_with_str_and_init(
-        &format!("{}/api/upload-file", base),
+        &format!("{base}/api/upload-file"),
         &request_init,
     );
 

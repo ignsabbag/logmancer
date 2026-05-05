@@ -26,7 +26,7 @@ pub fn Home() -> impl IntoView {
         spawn_local(async move {
             match upload_local_file(file).await {
                 Ok(file_id) => {
-                    navigate(&format!("/log/{}", file_id), Default::default());
+                    navigate(&format!("/log/{file_id}"), Default::default());
                 }
                 Err(err) => {
                     log!("Error uploading file: {}", err);
@@ -53,7 +53,7 @@ pub fn Home() -> impl IntoView {
         spawn_local(async move {
             match open_server_file(trimmed_path).await {
                 Ok(file_id) => {
-                    navigate(&format!("/log/{}", file_id), Default::default());
+                    navigate(&format!("/log/{file_id}"), Default::default());
                 }
                 Err(err) => {
                     log!("Error opening server file: {}", err);

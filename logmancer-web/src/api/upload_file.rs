@@ -44,7 +44,7 @@ pub async fn upload_file(
             .map(|d| d.as_nanos())
             .unwrap_or_default();
         let mut path = std::env::temp_dir();
-        path.push(format!("logmancer-upload-{}-{}", timestamp, file_name));
+        path.push(format!("logmancer-upload-{timestamp}-{file_name}"));
 
         let mut temp_file = match std::fs::File::create(&path) {
             Ok(file) => file,
@@ -123,7 +123,7 @@ pub async fn upload_file(
             error!("Error opening uploaded file path={} error={}", path_string, err);
             (
                 StatusCode::BAD_REQUEST,
-                Json(format!("Could not open uploaded file: {}", err)),
+                Json(format!("Could not open uploaded file: {err}")),
             )
                 .into_response()
         }

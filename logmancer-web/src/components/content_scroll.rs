@@ -51,7 +51,7 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
 
             if let Some(page_result) = page_result.get() {
                 log!("Scroll detected: {}", scroll.scroll_top());
-                if None == scroll_debounce.get() {
+                if scroll_debounce.get().is_none() {
                     let timeout_handle = set_timeout_with_handle(
                         move || {
                             let ratio = page_result.total_lines as f64 * scroll.scroll_top() as f64 / scroll.scroll_height() as f64;
@@ -103,7 +103,7 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
     
     Effect::new(move || {
         if let Some(page_result) = page_result.get() {
-            if page_result.indexing_progress < 1.0 && None == index_debounce.get() {
+            if page_result.indexing_progress < 1.0 && index_debounce.get().is_none() {
                 let handle = set_timeout_with_handle(
                     move || {
                         set_start_line.notify();

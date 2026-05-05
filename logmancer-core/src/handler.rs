@@ -20,7 +20,7 @@ impl LogFileHandler {
         let (reload_sender, reload_receiver) = unbounded::<()>();
         let (filter_sender, filter_receiver) = unbounded::<Option<String>>();
         let log_file = Arc::new(RwLock::new(LogFile::new(path.clone())?));
-        info!("File {} loaded", path);
+        info!("File {path} loaded");
 
         let reload_write_ops = FileWriteOps::new(Arc::clone(&log_file));
         let filter_write_ops = FileWriteOps::new(Arc::clone(&log_file));

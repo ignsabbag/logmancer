@@ -4,13 +4,14 @@ mod print_utils;
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode},
-    execute, terminal,
-    style::{Print}
+    execute,
+    style::Print,
+    terminal,
 };
 use log::{debug, error, LevelFilter};
 use logmancer_core::LogReader;
 use std::env;
-use std::fs::{OpenOptions};
+use std::fs::OpenOptions;
 use std::io::{stdout, Write};
 use std::{process, time};
 
@@ -27,7 +28,7 @@ fn main() -> std::io::Result<()> {
     execute!(stdout(), terminal::EnterAlternateScreen)?;
     terminal::enable_raw_mode()?;
     std::panic::set_hook(Box::new(|panic_info| {
-        error!("{}", panic_info);
+        error!("{panic_info}");
         terminal::disable_raw_mode().unwrap();
         process::exit(1);
     }));
@@ -35,7 +36,7 @@ fn main() -> std::io::Result<()> {
     let mut reader = match LogReader::new(filepath.to_string()) {
         Ok(r) => r,
         Err(e) => {
-            error!("Error opening file: {}", e);
+            error!("Error opening file: {e}");
             process::exit(1);
         }
     };
@@ -73,7 +74,7 @@ fn main() -> std::io::Result<()> {
                 page_result
             },
             Err(e) => {
-                error!("Error reading file: {}", e);
+                error!("Error reading file: {e}");
                 break;
             }
         };
@@ -83,7 +84,7 @@ fn main() -> std::io::Result<()> {
 
         if last_page_result.as_ref() != Some(&page_result) || dimensions_changed {
             let indexed = if indexing_progress < 100.0 {
-                format!(" ({:.2}% indexed)", indexing_progress)
+                format!(" ({indexing_progress:.2}% indexed)")
             } else {
                 "".to_owned()
             };
@@ -119,38 +120,36 @@ fn main() -> std::io::Result<()> {
         } else {
             Some(event::read()?)
         };
-        if let Some(evt) = event {
-            if let Event::Key(key_event) = evt {
-                match key_event.code {
-                    KeyCode::Char('q') => break,
-                    KeyCode::Char('f') | KeyCode::Char('F') => follow_mode = !follow_mode,
-                    KeyCode::Char('g') => {
-                        end_reached = false;
-                        page_first_line = 0;
-                    }
-                    KeyCode::Char('G') => {
-                        end_reached = true;
-                    }
-                    KeyCode::Down => {
-                        if !end_reached {
-                            page_first_line += 1;
-                        }
-                    }
-                    KeyCode::Up => {
-                        end_reached = false;
-                        page_first_line = page_first_line.saturating_sub(1);
-                    }
-                    KeyCode::PageDown => {
-                        if !end_reached {
-                            page_first_line += page_size;
-                        }
-                    }
-                    KeyCode::PageUp => {
-                        end_reached = false;
-                        page_first_line = page_first_line.saturating_sub(page_size);
-                    }
-                    _ => {}
+        if let Some(Event::Key(key_event)) = event {
+            match key_event.code {
+                KeyCode::Char('q') => break,
+                KeyCode::Char('f') | KeyCode::Char('F') => follow_mode = !follow_mode,
+                KeyCode::Char('g') => {
+                    end_reached = false;
+                    page_first_line = 0;
                 }
+                KeyCode::Char('G') => {
+                    end_reached = true;
+                }
+                KeyCode::Down => {
+                    if !end_reached {
+                        page_first_line += 1;
+                    }
+                }
+                KeyCode::Up => {
+                    end_reached = false;
+                    page_first_line = page_first_line.saturating_sub(1);
+                }
+                KeyCode::PageDown => {
+                    if !end_reached {
+                        page_first_line += page_size;
+                    }
+                }
+                KeyCode::PageUp => {
+                    end_reached = false;
+                    page_first_line = page_first_line.saturating_sub(page_size);
+                }
+                _ => {}
             }
         }
     }
@@ -175,7 +174,6 @@ fn trunc_str(s: &str, max_len: usize) -> &str {
 fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
     let file = OpenOptions::new()
         .create(true)
-        .write(true)
         .append(true)
         .open("logmancer.log")?;
 
