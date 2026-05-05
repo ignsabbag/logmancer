@@ -10,9 +10,120 @@ body {
   overflow: hidden;
 }
 
-.home {
-  font-family: sans-serif;
+.home-landing {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #f7f9fc 0%, #eef2ff 100%);
+  padding: 24px;
+  font-family: Inter, system-ui, -apple-system, sans-serif;
+}
+
+.home-card {
+  width: min(680px, 100%);
+  background: #fff;
+  border: 1px solid #e6e8ee;
+  border-radius: 16px;
+  box-shadow: 0 10px 35px rgba(25, 39, 68, 0.08);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  h1 {
+    font-size: 2rem;
+    line-height: 1.2;
+    color: #111827;
+  }
+}
+
+.home-subtitle {
+  color: #4b5563;
+  font-size: 0.98rem;
+}
+
+.home-dropzone {
+  border: 2px dashed #b7c3d9;
+  border-radius: 12px;
+  background: #f9fbff;
+  padding: 24px;
   text-align: center;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+
+  &.is-dragging {
+    border-color: #2563eb;
+    background: #eef4ff;
+    transform: translateY(-1px);
+  }
+}
+
+.home-dropzone-title {
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.home-dropzone-subtitle {
+  margin-top: 4px;
+  margin-bottom: 14px;
+  color: #6b7280;
+  font-size: 0.92rem;
+}
+
+.home-file-input {
+  display: none;
+}
+
+.home-upload-btn,
+.home-server-form button {
+  display: inline-block;
+  text-align: center;
+  border: none;
+  background: #2563eb;
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  &.is-disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+}
+
+.home-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  font-size: 0.88rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.home-server-form {
+  display: flex;
+  gap: 8px;
+
+  input {
+    flex: 1;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 0.95rem;
+  }
+}
+
+.home-error {
+  color: #b91c1c;
+  font-size: 0.9rem;
 }
 
 .progress-bar {

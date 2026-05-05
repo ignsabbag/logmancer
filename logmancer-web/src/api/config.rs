@@ -2,6 +2,7 @@ use crate::api::file_info::file_info;
 use crate::api::filter::{apply_filter, read_filter_page};
 use crate::api::open_server_file::open_server_file;
 use crate::api::read_page::{read_page, tail};
+use crate::api::upload_file::upload_file;
 use axum::routing::{get, post};
 use axum::Router;
 use logmancer_core::LogRegistry;
@@ -15,6 +16,7 @@ pub struct AppState {
 pub fn api_routes_with_registry<T>(registry: Arc<LogRegistry>) -> Router<T> {
     Router::new()
         .route("/open-server-file", post(open_server_file))
+        .route("/upload-file", post(upload_file))
         .route("/read-page", get(read_page))
         .route("/file_info", get(file_info))
         .route("/tail", get(tail))

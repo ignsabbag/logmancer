@@ -14,3 +14,6 @@ pub mod read_page;
 
 #[cfg(feature = "ssr")]
 pub mod filter;
+
+#[cfg(feature = "ssr")]
+pub mod upload_file;
