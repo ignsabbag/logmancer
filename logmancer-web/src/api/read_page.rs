@@ -17,7 +17,7 @@ pub async fn read_page(
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(format!("Error reading file: {}", e)),
+                Json(format!("Error reading file: {e}")),
             )
                 .into_response(),
         },
@@ -33,7 +33,7 @@ pub async fn tail(State(app_state): State<AppState>, query: Query<TailRequest>) 
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(format!("Error reading file: {}", e)),
+                Json(format!("Error reading file: {e}")),
             )
                 .into_response(),
         },

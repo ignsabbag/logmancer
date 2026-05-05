@@ -32,6 +32,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  LEPTOS_OUTPUT_NAME: logmancer-web
 
 jobs:
   test:
@@ -64,7 +65,9 @@ jobs:
           pkg-config --exists webkit2gtk-4.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
@@ -74,9 +77,16 @@ jobs:
       - name: Run tests
         run: cargo test --workspace --verbose
 
+      - name: Run clippy
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Build workspace
+        run: cargo build --workspace --verbose
+
   build:
-    name: Build for ${{ matrix.target }}
+    name: Package for ${{ matrix.target }}
     needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -114,7 +124,7 @@ jobs:
           pkg-config --exists webkit2gtk-4.1
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: ${{ matrix.target }},wasm32-unknown-unknown
 
@@ -171,7 +181,6 @@ jobs:
           EOF
 
           chmod +x "$package_root/run-web.sh" "$package_root/run-desktop.sh"
-          (cd dist && zip -r "logmancer-${{ matrix.target }}.zip" "logmancer-${{ matrix.target }}")
 
       - name: Package Windows artifacts
         if: runner.os == 'Windows'
@@ -204,14 +213,11 @@ jobs:
           "%~dp0logmancer-desktop.exe" %*
           "@ | Set-Content -Path "$packageRoot/run-desktop.cmd"
 
-          Compress-Archive -Path "$packageRoot/*" -DestinationPath "dist/logmancer-${{ matrix.target }}.zip" -Force
-
       - name: Upload artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
         with:
           name: logmancer-package-${{ matrix.target }}
-          path: dist/logmancer-${{ matrix.target }}.zip
+          path: dist/logmancer-${{ matrix.target }}
           if-no-files-found: error
 
   cleanup-artifacts:

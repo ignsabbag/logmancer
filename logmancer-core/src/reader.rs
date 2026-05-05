@@ -24,13 +24,13 @@ impl LogReader {
             total_lines: read_ops.total_lines()?,
             indexing_progress: read_ops.indexing_progress()?,
         };
-        debug!("{:?}", file_info);
+        debug!("{file_info:?}");
         Ok(file_info)
     }
 
     /// Reads a page from the file, starting at `start_line` and reading up to `max_lines` lines.
     pub fn read_page(&mut self, start_line: usize, max_lines: usize) -> io::Result<PageResult> {
-        debug!("Reading from line {} to max {}", start_line, max_lines);
+        debug!("Reading from line {start_line} to max {max_lines}");
         let read_ops = self.handler.read_ops();
         let to_line = min(start_line + max_lines, read_ops.total_lines()?);
         let from_line = to_line.saturating_sub(max_lines);
@@ -51,7 +51,7 @@ impl LogReader {
 
     // Reads the last `max_lines` lines from the file. If `follow` is true the file is reloaded
     pub fn tail(&mut self, max_lines: usize, follow: bool) -> io::Result<PageResult> {
-        debug!("Reading last {} lines to the end", max_lines);
+        debug!("Reading last {max_lines} lines to the end");
         if follow {
             self.handler.reload();
         }
@@ -78,10 +78,7 @@ impl LogReader {
     }
 
     pub fn read_filter(&mut self, start_line: usize, max_lines: usize) -> io::Result<PageResult> {
-        debug!(
-            "Reading filter from line {} to max {}",
-            start_line, max_lines
-        );
+        debug!("Reading filter from line {start_line} to max {max_lines}");
         let read_ops = self.handler.read_ops();
 
         let total_lines = read_ops.filtered_lines()?;
@@ -111,7 +108,7 @@ impl LogReader {
     }
 
     pub fn tail_filter(&mut self, max_lines: usize, follow: bool) -> io::Result<PageResult> {
-        debug!("Reading last {} lines to the end", max_lines);
+        debug!("Reading last {max_lines} lines to the end");
         if follow {
             self.handler.filter(None);
         }

@@ -19,8 +19,8 @@ async fn main() {
         .or_else(|| std::env::var("LOGMANCER_INITIAL_FILE").ok());
     let initial_file_id = try_open_initial_file(&registry, initial_path.as_deref());
     let startup_url = match initial_file_id.as_deref() {
-        Some(file_id) => format!("http://{}/log/{}", addr, file_id),
-        None => format!("http://{}", addr),
+        Some(file_id) => format!("http://{addr}/log/{file_id}"),
+        None => format!("http://{addr}"),
     };
 
     info!(

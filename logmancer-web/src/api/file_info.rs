@@ -12,7 +12,7 @@ pub async fn file_info(State(app_state): State<AppState>, query: Query<FileInfoR
         Some(reader) => {
             match reader.file_info() {
                 Ok(file_info) => (StatusCode::OK, Json(file_info)).into_response(),
-                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(format!("Error reading file: {}", e))).into_response()
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(format!("Error reading file: {e}"))).into_response()
             }
         }
         None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response()

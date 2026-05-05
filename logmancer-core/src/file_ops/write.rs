@@ -40,7 +40,7 @@ impl FileWriteOps {
     pub fn index_lines(&mut self) -> io::Result<bool> {
         let mut file_lock = self.log_file.write().unwrap();
         
-        let start_pos = file_lock.index.last().unwrap().clone();
+        let start_pos = *file_lock.index.last().unwrap();
         let end_pos = min(file_lock.mmap.len(), start_pos + INDEX_MAX_BYTES);
         let end_reached = file_lock.mmap.len() <= start_pos + INDEX_MAX_BYTES;
         let content = &file_lock.mmap[start_pos..end_pos];
@@ -84,10 +84,10 @@ impl FileWriteOps {
             let end_pos = file_lock.index[i + 1];
             let line = &file_lock.mmap[start_pos..end_pos];
             let mut match_filter = false;
-            if let Ok(text) = std::str::from_utf8(line) {
-                if re.is_match(text) {
-                    match_filter = true;
-                }
+            if let Ok(text) = std::str::from_utf8(line)
+                && re.is_match(text)
+            {
+                match_filter = true;
             }
             file_lock.filter.push(match_filter);
         }

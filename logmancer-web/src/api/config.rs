@@ -3,10 +3,13 @@ use crate::api::filter::{apply_filter, read_filter_page};
 use crate::api::open_server_file::open_server_file;
 use crate::api::read_page::{read_page, tail};
 use crate::api::upload_file::upload_file;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use logmancer_core::LogRegistry;
 use std::sync::Arc;
+
+const LOG_UPLOAD_BODY_LIMIT_BYTES: usize = 512 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -22,6 +25,7 @@ pub fn api_routes_with_registry<T>(registry: Arc<LogRegistry>) -> Router<T> {
         .route("/tail", get(tail))
         .route("/apply-filter", post(apply_filter))
         .route("/read-filter-page", get(read_filter_page))
+        .layer(DefaultBodyLimit::max(LOG_UPLOAD_BODY_LIMIT_BYTES))
         .with_state(AppState { registry })
 }
 

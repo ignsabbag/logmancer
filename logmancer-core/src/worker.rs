@@ -23,13 +23,13 @@ pub fn spawn_reload_worker(
                                         wait(1);
                                     }
                                     Err(error) => {
-                                        panic!("Error indexing file: {}", error)
+                                        panic!("Error indexing file: {error}")
                                     }
                                 }
                             }
                         }
                         Err(error) => {
-                            panic!("Error reloading file: {}", error)
+                            panic!("Error reloading file: {error}")
                         }
                     }
                 }
@@ -59,7 +59,7 @@ pub fn spawn_filter_worker(
                                         wait(1);
                                     }
                                     Err(error) => {
-                                        panic!("Error indexing filtered lines: {}", error)
+                                        panic!("Error indexing filtered lines: {error}")
                                     }
                                 }
                             }

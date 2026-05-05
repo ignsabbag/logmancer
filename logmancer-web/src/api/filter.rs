@@ -25,7 +25,7 @@ pub async fn read_filter_page(State(app_state): State<AppState>, query: Query<Re
         Some(mut reader) => {
             match reader.read_filter(query.start_line, query.max_lines) {
                 Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
-                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(format!("Error reading filter: {}", e))).into_response()
+                Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(format!("Error reading filter: {e}"))).into_response()
             }
         }
         None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response()

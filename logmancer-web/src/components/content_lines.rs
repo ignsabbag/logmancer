@@ -142,7 +142,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         };
         set_wheel_lines.set(lines_to_jump * signum);
 
-        if let None = debounce.get() {
+        if debounce.get().is_none() {
             if let Some(page_result) = page_result.get() {
                 let handle = set_timeout_with_handle(
                     move || {
@@ -151,7 +151,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                             log!("Scrolling up {} lines", delta_lines);
                             page_result
                                 .start_line
-                                .saturating_sub(delta_lines.abs() as usize)
+                                .saturating_sub(delta_lines.unsigned_abs() as usize)
                         } else {
                             log!("Scrolling down {} lines", delta_lines);
                             page_result
