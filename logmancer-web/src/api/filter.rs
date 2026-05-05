@@ -2,12 +2,12 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
-use leptos::logging::log;
 use crate::api::config::AppState;
 use crate::api::commons::{ApplyFilterRequest, ReadFilterRequest};
+use tracing::debug;
 
 pub async fn apply_filter(State(app_state): State<AppState>, Json(payload): Json<ApplyFilterRequest>) -> impl IntoResponse {
-    log!("apply_filter: file_id={}, filter={}", payload.file_id, payload.filter);
+    debug!("apply_filter: file_id={}, filter={}", payload.file_id, payload.filter);
 
     match app_state.registry.get_reader(&payload.file_id) {
         Some(mut reader) => {
@@ -19,7 +19,7 @@ pub async fn apply_filter(State(app_state): State<AppState>, Json(payload): Json
 }
 
 pub async fn read_filter_page(State(app_state): State<AppState>, query: Query<ReadFilterRequest>) -> impl IntoResponse {
-    log!("read_filter_page: {:?}", query);
+    debug!("read_filter_page: {:?}", query);
 
     match app_state.registry.get_reader(&query.file_id) {
         Some(mut reader) => {

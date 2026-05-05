@@ -141,6 +141,7 @@ pub fn init_backend_logging() {
                     let _ = fmt()
                         .with_env_filter(env_filter)
                         .with_writer(writer)
+                        .with_ansi(false)
                         .with_target(false)
                         .try_init();
                     return;
