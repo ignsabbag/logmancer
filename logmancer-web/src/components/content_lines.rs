@@ -32,6 +32,8 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         page_size,
         set_page_size,
         log_page,
+        selected_line,
+        set_selected_line,
         ..
     } = context;
 
@@ -206,15 +208,18 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                     } else {
                         update_tail(page_result.start_line);
                     }
-                    let (line_numbers, line_texts): (Vec<_>, Vec<_>) = page_result
-                        .lines
-                        .into_iter()
-                        .map(|line| (line.number, line.text))
-                        .unzip();
+                    let lines = page_result.lines;
                     view! {
                         <div class="line-numbers">
-                            { line_numbers.into_iter().map(|line_number| view! {
-                                <div><b>{line_number}</b></div>
+                            { lines.iter().map(|line| {
+                                let line_number = line.number;
+                                view! {
+                                    <div
+                                        on:click=move |_| set_selected_line.set(Some(line_number))
+                                    >
+                                        <b>{line_number}</b>
+                                    </div>
+                                }
                             }).collect::<Vec<_>>() }
                         </div>
                         <div
@@ -223,8 +228,17 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                             on:keydown=on_key_down on:keyup=on_key_up
                             on:wheel=on_wheel
                         >
-                            { line_texts.into_iter().map(|line_text| view! {
-                                <div>{line_text}</div>
+                            { lines.into_iter().map(|line| {
+                                let line_number = line.number;
+                                let line_text = line.text;
+                                view! {
+                                    <div
+                                        class:selected=move || selected_line.get() == Some(line_number)
+                                        on:click=move |_| set_selected_line.set(Some(line_number))
+                                    >
+                                        {line_text}
+                                    </div>
+                                }
                             }).collect::<Vec<_>>() }
                         </div>
                     }
