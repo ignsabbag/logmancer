@@ -32,6 +32,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  LEPTOS_OUTPUT_NAME: logmancer-web
 
 jobs:
   test:
