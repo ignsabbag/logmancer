@@ -4,10 +4,10 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
-use leptos::logging::log;
+use tracing::debug;
 
 pub async fn file_info(State(app_state): State<AppState>, query: Query<FileInfoRequest>) -> impl IntoResponse {
-    log!("Getting info about: {:?}", query);
+    debug!("Getting info about: {:?}", query);
     match app_state.registry.get_reader(&query.file_id) {
         Some(reader) => {
             match reader.file_info() {
