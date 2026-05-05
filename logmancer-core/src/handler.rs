@@ -51,7 +51,7 @@ impl LogFileHandler {
         }
     }
 
-    pub fn read_ops(&self) -> FileReadOps {
+    pub fn read_ops(&self) -> FileReadOps<'_> {
         FileReadOps::new(self.log_file.read().unwrap())
     }
 

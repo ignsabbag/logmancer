@@ -84,10 +84,10 @@ impl FileWriteOps {
             let end_pos = file_lock.index[i + 1];
             let line = &file_lock.mmap[start_pos..end_pos];
             let mut match_filter = false;
-            if let Ok(text) = std::str::from_utf8(line) {
-                if re.is_match(text) {
-                    match_filter = true;
-                }
+            if let Ok(text) = std::str::from_utf8(line)
+                && re.is_match(text)
+            {
+                match_filter = true;
             }
             file_lock.filter.push(match_filter);
         }

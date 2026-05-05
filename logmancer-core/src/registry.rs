@@ -26,7 +26,7 @@ impl LogRegistry {
     }
 
     /// Gets a LogReader by UUID
-    pub fn get_reader(&self, file_id: &str) -> Option<RefMut<Uuid,LogReader>> {
+    pub fn get_reader(&self, file_id: &str) -> Option<RefMut<'_, Uuid, LogReader>> {
         if let Ok(uuid) = Uuid::parse_str(file_id) {
             self.open_files.get_mut(&uuid)
         } else {
