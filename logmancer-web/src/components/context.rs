@@ -21,4 +21,6 @@ pub struct LogViewContext {
     pub log_page: LocalResource<Result<PageResult,ServerFnError>>,
     pub indexing_progress: ReadSignal<f64>,
     pub set_indexing_progress: WriteSignal<f64>,
+    pub selected_line: ReadSignal<Option<usize>>,
+    pub set_selected_line: WriteSignal<Option<usize>>,
 }

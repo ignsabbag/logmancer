@@ -26,6 +26,7 @@ pub fn FilterPane() -> impl IntoView {
     let (filter_text, set_filter_text) = signal(String::new());
     let (filter_applied, set_filter_applied) = signal(false);
     let (indexing_progress, set_indexing_progress) = signal(0_f64);
+    let (selected_line, set_selected_line) = signal(None::<usize>);
     
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
@@ -52,6 +53,8 @@ pub fn FilterPane() -> impl IntoView {
         log_page: filter_page,
         indexing_progress,
         set_indexing_progress,
+        selected_line,
+        set_selected_line,
     };
 
     let on_input = move |ev: leptos::ev::Event| {

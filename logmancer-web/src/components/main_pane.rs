@@ -28,6 +28,7 @@ pub fn MainPane() -> impl IntoView {
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
     let (indexing_progress, set_indexing_progress) = signal(0_f64);
+    let (selected_line, set_selected_line) = signal(None::<usize>);
     
     let log_page = LocalResource::new(move ||
         fetch_page(file_id.get(), start_line.get(), page_size.get(), tail.get(), follow.get()));
@@ -39,6 +40,8 @@ pub fn MainPane() -> impl IntoView {
         log_page,
         indexing_progress,
         set_indexing_progress,
+        selected_line,
+        set_selected_line,
     };
 
     Effect::new(move || {
