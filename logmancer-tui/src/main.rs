@@ -131,19 +131,15 @@ fn main() -> std::io::Result<()> {
                 KeyCode::Char('G') => {
                     end_reached = true;
                 }
-                KeyCode::Down => {
-                    if !end_reached {
-                        page_first_line += 1;
-                    }
+                KeyCode::Down if !end_reached => {
+                    page_first_line += 1;
                 }
                 KeyCode::Up => {
                     end_reached = false;
                     page_first_line = page_first_line.saturating_sub(1);
                 }
-                KeyCode::PageDown => {
-                    if !end_reached {
-                        page_first_line += page_size;
-                    }
+                KeyCode::PageDown if !end_reached => {
+                    page_first_line += page_size;
                 }
                 KeyCode::PageUp => {
                     end_reached = false;
