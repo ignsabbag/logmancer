@@ -4,6 +4,8 @@
 
 A lightweight, cross-platform log viewer written in Rust. Designed for efficiency and speed, Logmancer reads directly from disk and handles very large log files with ease.
 
+Current version: `0.1.0`.
+
 ---
 
 ## Table of Contents
@@ -19,6 +21,7 @@ A lightweight, cross-platform log viewer written in Rust. Designed for efficienc
   * [logmancer-desktop](#logmancer-desktop)
   * [Controls](#controls)
 * [Configuration](#configuration)
+* [Roadmap](#roadmap)
 * [Contributing](#contributing)
 * [License](#license)
 
@@ -27,11 +30,14 @@ A lightweight, cross-platform log viewer written in Rust. Designed for efficienc
 ## Features
 
 * **Efficient disk-backed reading** of very large files.
-* **Regex-based filtering** with results navigable in a separate panel.
-* **Colorized search** highlighting for easier log inspection.
-* **Line parsing** by pattern (e.g., Log4j) or custom regex, displayed in columns each with its own filter.
+* **Optimized file indexing** for fast navigation.
+* **`less`-style navigation** with keyboard shortcuts such as `g`, `G`, page movement, and follow mode.
+* **Regex-based filtering** in web/desktop with results navigable in a separate panel.
+* **TUI, web, and desktop frontends** built on a shared core.
 
 *Note: The project is in its early stages of development.*
+
+Planned features include search, visual rules, multi-file workspace improvements, and structured log parsing. See [ROADMAP.md](ROADMAP.md) for details.
 
 ---
 
@@ -115,6 +121,14 @@ cargo tauri dev
 ## Configuration
 
 No additional configuration is required at this time. Future modules may introduce config files or environment variables.
+
+---
+
+## Roadmap
+
+See [ROADMAP.md](ROADMAP.md) for planned releases and future ideas.
+
+Release history is tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
