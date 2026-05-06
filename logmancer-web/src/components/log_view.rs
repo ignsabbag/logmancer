@@ -1,4 +1,4 @@
-use crate::components::context::LogFileContext;
+use crate::components::context::{LogFileContext, SelectionContext, SelectionSource};
 use crate::components::filter_pane::FilterPane;
 use crate::components::main_pane::MainPane;
 use leptos::html;
@@ -11,6 +11,8 @@ pub fn LogView() -> impl IntoView {
     let file_id = Memo::new(move |_| use_params_map().get().get("id").unwrap_or_default());
     let (follow, set_follow) = signal(false);
     let (tail, set_tail) = signal(false);
+    let (selected_original_line, set_selected_original_line) = signal(None::<usize>);
+    let (selected_line_source, set_selected_line_source) = signal(SelectionSource::Main);
     let (filter_height_percent, set_filter_height_percent) = signal(30.0_f64);
     let (is_resizing, set_is_resizing) = signal(false);
     let log_view_ref: NodeRef<html::Div> = NodeRef::new();
@@ -42,6 +44,13 @@ pub fn LogView() -> impl IntoView {
         set_tail,
         follow,
         set_follow,
+    });
+
+    provide_context(SelectionContext {
+        selected_original_line,
+        set_selected_original_line,
+        selected_line_source,
+        set_selected_line_source,
     });
 
     view! {

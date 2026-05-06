@@ -14,6 +14,20 @@ pub struct LogFileContext {
 }
 
 #[derive(Clone)]
+pub struct SelectionContext {
+    pub selected_original_line: ReadSignal<Option<usize>>,
+    pub set_selected_original_line: WriteSignal<Option<usize>>,
+    pub selected_line_source: ReadSignal<SelectionSource>,
+    pub set_selected_line_source: WriteSignal<SelectionSource>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SelectionSource {
+    Main,
+    Filter,
+}
+
+#[derive(Clone)]
 pub struct LogViewContext {
     pub set_start_line: WriteSignal<usize>,
     pub page_size: ReadSignal<usize>,
@@ -23,4 +37,6 @@ pub struct LogViewContext {
     pub set_indexing_progress: WriteSignal<f64>,
     pub selected_line: ReadSignal<Option<usize>>,
     pub set_selected_line: WriteSignal<Option<usize>>,
+    pub selection_source: SelectionSource,
+    pub set_selected_line_source: WriteSignal<SelectionSource>,
 }

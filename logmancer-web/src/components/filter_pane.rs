@@ -1,7 +1,7 @@
 use crate::components::async_functions::{apply_filter as apply_filter_fetch, fetch_filter_page};
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
-use crate::components::context::{LogFileContext, LogViewContext};
+use crate::components::context::{LogFileContext, LogViewContext, SelectionContext, SelectionSource};
 use crate::components::pane_index_progress::PaneIndexProgress;
 use leptos::context::use_context;
 use leptos::ev::KeyboardEvent;
@@ -26,7 +26,12 @@ pub fn FilterPane() -> impl IntoView {
     let (filter_text, set_filter_text) = signal(String::new());
     let (filter_applied, set_filter_applied) = signal(false);
     let (indexing_progress, set_indexing_progress) = signal(0_f64);
-    let (selected_line, set_selected_line) = signal(None::<usize>);
+    let SelectionContext {
+        selected_original_line,
+        set_selected_original_line,
+        set_selected_line_source,
+        ..
+    } = use_context().expect("SelectionContext not found");
     
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
@@ -53,8 +58,10 @@ pub fn FilterPane() -> impl IntoView {
         log_page: filter_page,
         indexing_progress,
         set_indexing_progress,
-        selected_line,
-        set_selected_line,
+        selected_line: selected_original_line,
+        set_selected_line: set_selected_original_line,
+        selection_source: SelectionSource::Filter,
+        set_selected_line_source,
     };
 
     let on_input = move |ev: leptos::ev::Event| {
