@@ -9,6 +9,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 ### Added
 
 - Project roadmap in `ROADMAP.md`.
+- Selected line highlighting in the web/desktop main viewer and filter panel (#15).
+- Filter result selection now synchronizes with the main viewer, selecting and revealing the matching original log line (#16).
 
 ## [0.1.0] - 2026-05-05
 

@@ -34,8 +34,15 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         log_page,
         selected_line,
         set_selected_line,
+        selection_source,
+        set_selected_line_source,
         ..
     } = context;
+
+    let select_line = move |line_number| {
+        set_selected_line_source.set(selection_source);
+        set_selected_line.set(Some(line_number));
+    };
 
     let div_ref: NodeRef<html::Div> = NodeRef::new();
     let (max_width, set_max_width) = signal(0);
@@ -215,7 +222,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                                 let line_number = line.number;
                                 view! {
                                     <div
-                                        on:click=move |_| set_selected_line.set(Some(line_number))
+                                        on:click=move |_| select_line(line_number)
                                     >
                                         <b>{line_number}</b>
                                     </div>
@@ -234,7 +241,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                                 view! {
                                     <div
                                         class:selected=move || selected_line.get() == Some(line_number)
-                                        on:click=move |_| set_selected_line.set(Some(line_number))
+                                        on:click=move |_| select_line(line_number)
                                     >
                                         {line_text}
                                     </div>
