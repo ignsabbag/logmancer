@@ -1,6 +1,7 @@
 # logmancer
 
-[![CI](https://github.com/ignsabbag/logmancer/actions/workflows/rust.yml/badge.svg)](https://github.com/ignsabbag/logmancer/actions/workflows/rust.yml)
+[![Test](https://github.com/ignsabbag/logmancer/actions/workflows/test.yml/badge.svg)](https://github.com/ignsabbag/logmancer/actions/workflows/test.yml)
+[![Build](https://github.com/ignsabbag/logmancer/actions/workflows/build.yml/badge.svg)](https://github.com/ignsabbag/logmancer/actions/workflows/build.yml)
 
 A lightweight, cross-platform log viewer written in Rust. Designed for efficiency and speed, Logmancer reads directly from disk and handles very large log files with ease.
 

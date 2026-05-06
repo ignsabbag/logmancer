@@ -1,29 +1,13 @@
-name: Rust
+name: Build
 
 on:
-  push:
-    branches: [ "main" ]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "uml/**"
-      - "LICENSE"
-      - ".vscode/**"
-      - ".idea/**"
-      - "**/*.log"
-  pull_request:
-    branches: [ "main" ]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - "uml/**"
-      - "LICENSE"
-      - ".vscode/**"
-      - ".idea/**"
-      - "**/*.log"
+  workflow_run:
+    workflows: ["Test"]
+    branches: ["main"]
+    types: [completed]
 
 concurrency:
-  group: rust-${{ github.workflow }}-${{ github.ref }}
+  group: build-${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 permissions:
@@ -35,69 +19,28 @@ env:
   LEPTOS_OUTPUT_NAME: logmancer-web
 
 jobs:
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Linux system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            libglib2.0-dev \
-            libgtk-3-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            libwebkit2gtk-4.1-dev \
-            patchelf \
-            librsvg2-dev
-
-      - name: Preflight Linux pkg-config dependencies
-        run: |
-          pkg-config --exists glib-2.0
-          pkg-config --exists gdk-3.0
-          pkg-config --exists gtk+-3.0
-          pkg-config --exists libsoup-3.0
-          pkg-config --exists javascriptcoregtk-4.1
-          pkg-config --exists webkit2gtk-4.1
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          components: clippy
-
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: test-${{ runner.os }}
-
-      - name: Run tests
-        run: cargo test --workspace --verbose
-
-      - name: Run clippy
-        run: cargo clippy --workspace -- -D warnings
-
-      - name: Build workspace
-        run: cargo build --workspace --verbose
-
   build:
-    name: Package for ${{ matrix.target }}
-    needs: test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    name: Package for ${{ matrix.package_suffix }}
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: windows-latest
+            package_suffix: x86_64-unknown-linux-gnu
+          - os: windows-2025
             target: x86_64-pc-windows-msvc
+            package_suffix: x86_64-pc-windows-msvc-windows-2025
+          - os: windows-2025-vs2026
+            target: x86_64-pc-windows-msvc
+            package_suffix: x86_64-pc-windows-msvc-windows-2025-vs2026
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -134,7 +77,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: build-${{ runner.os }}-${{ matrix.target }}
+          shared-key: build-${{ runner.os }}-${{ matrix.package_suffix }}
 
       - name: Build release binaries
         run: cargo build --release --target ${{ matrix.target }}
@@ -150,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           target_dir="target/${{ matrix.target }}/release"
-          package_root="dist/logmancer-${{ matrix.target }}"
+          package_root="dist/logmancer-${{ matrix.package_suffix }}"
 
           mkdir -p "$package_root"
           cp "$target_dir/logmancer-web" "$package_root/"
@@ -187,7 +130,7 @@ jobs:
         shell: pwsh
         run: |
           $targetDir = "target/${{ matrix.target }}/release"
-          $packageRoot = "dist/logmancer-${{ matrix.target }}"
+          $packageRoot = "dist/logmancer-${{ matrix.package_suffix }}"
 
           New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
           Copy-Item "$targetDir/logmancer-web.exe" "$packageRoot/"
@@ -216,14 +159,14 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: logmancer-package-${{ matrix.target }}
-          path: dist/logmancer-${{ matrix.target }}
+          name: logmancer-package-${{ matrix.package_suffix }}
+          path: dist/logmancer-${{ matrix.package_suffix }}
           if-no-files-found: error
 
   cleanup-artifacts:
     name: Keep only latest main artifacts
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && success()
     runs-on: ubuntu-latest
 
     steps:
