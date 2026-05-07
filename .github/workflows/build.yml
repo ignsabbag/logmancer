@@ -71,13 +71,14 @@ jobs:
         with:
           targets: ${{ matrix.target }},wasm32-unknown-unknown
 
-      - name: Install cargo-leptos
-        run: cargo install cargo-leptos --locked
-
       - name: Cache Rust dependencies
+        continue-on-error: true
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: build-${{ runner.os }}-${{ matrix.package_suffix }}
+
+      - name: Install cargo-leptos
+        run: cargo install cargo-leptos --locked
 
       - name: Build release binaries
         run: cargo build --release --target ${{ matrix.target }}
