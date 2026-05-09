@@ -1,7 +1,9 @@
 use crate::components::async_functions::fetch_page;
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
-use crate::components::context::{LogFileContext, LogViewContext, SelectionContext, SelectionSource};
+use crate::components::context::{
+    ActivePaneContext, LogFileContext, LogViewContext, SelectionContext, SelectionSource,
+};
 use crate::components::pane_index_progress::PaneIndexProgress;
 use leptos::context::use_context;
 use leptos::html::Div;
@@ -40,6 +42,11 @@ pub fn MainPane() -> impl IntoView {
         set_selected_line_source,
     } = use_context().expect("SelectionContext not found");
 
+    let ActivePaneContext {
+        active_pane,
+        set_active_pane,
+    } = use_context().expect("ActivePaneContext not found");
+
     let div_ref = NodeRef::<Div>::new();    
     let (content_width, set_content_width) = signal(2048_f64);
     let (content_height, set_content_height) = signal(1080_f64);
@@ -61,6 +68,7 @@ pub fn MainPane() -> impl IntoView {
         set_selected_line: set_selected_original_line,
         selection_source: SelectionSource::Main,
         set_selected_line_source,
+        set_active_pane,
     };
 
     Effect::new(move || {
@@ -97,7 +105,10 @@ pub fn MainPane() -> impl IntoView {
     });
     
     view! {
-        <div class="main-pane">
+        <div
+            class="main-pane"
+            class:active-pane=move || active_pane.get() == SelectionSource::Main
+        >
             <PaneIndexProgress
                 context=log_view_context.clone()
                 hidden=Signal::derive(move || indexing_progress.get() >= 1.0)

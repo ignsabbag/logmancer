@@ -36,10 +36,12 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         set_selected_line,
         selection_source,
         set_selected_line_source,
+        set_active_pane,
         ..
     } = context;
 
     let select_line = move |line_number| {
+        set_active_pane.set(selection_source);
         set_selected_line_source.set(selection_source);
         set_selected_line.set(Some(line_number));
     };
@@ -102,6 +104,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
     };
 
     let on_key_down = move |ev: KeyboardEvent| {
+        set_active_pane.set(selection_source);
         let key = ev.key();
         if KEYS.contains(&key.as_str()) {
             if active_key.get() == Some(key.clone()) {
@@ -136,6 +139,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
     };
 
     let on_wheel = move |ev: WheelEvent| {
+        set_active_pane.set(selection_source);
         ev.prevent_default();
 
         let delta = ev.delta_y().abs();
@@ -232,6 +236,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         <div
                             node_ref=div_ref
                             class="text-lines" tabindex="0"
+                            on:focus=move |_| set_active_pane.set(selection_source)
                             on:keydown=on_key_down on:keyup=on_key_up
                             on:wheel=on_wheel
                         >

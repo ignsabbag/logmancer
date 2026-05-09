@@ -1,7 +1,9 @@
 use crate::components::async_functions::{apply_filter as apply_filter_fetch, fetch_filter_page};
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
-use crate::components::context::{LogFileContext, LogViewContext, SelectionContext, SelectionSource};
+use crate::components::context::{
+    ActivePaneContext, LogFileContext, LogViewContext, SelectionContext, SelectionSource,
+};
 use crate::components::pane_index_progress::PaneIndexProgress;
 use leptos::context::use_context;
 use leptos::ev::KeyboardEvent;
@@ -32,6 +34,10 @@ pub fn FilterPane() -> impl IntoView {
         set_selected_line_source,
         ..
     } = use_context().expect("SelectionContext not found");
+    let ActivePaneContext {
+        active_pane,
+        set_active_pane,
+    } = use_context().expect("ActivePaneContext not found");
     
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
@@ -62,6 +68,7 @@ pub fn FilterPane() -> impl IntoView {
         set_selected_line: set_selected_original_line,
         selection_source: SelectionSource::Filter,
         set_selected_line_source,
+        set_active_pane,
     };
 
     let on_input = move |ev: leptos::ev::Event| {
@@ -70,6 +77,7 @@ pub fn FilterPane() -> impl IntoView {
     };
 
     let on_key_down = move |ev: KeyboardEvent| {
+        set_active_pane.set(SelectionSource::Filter);
         if ev.key() == "Enter" {
             let text = filter_text.get();
             if !text.is_empty() {
@@ -119,7 +127,10 @@ pub fn FilterPane() -> impl IntoView {
     });
     
     view! {
-        <div class="filter-pane">
+        <div
+            class="filter-pane"
+            class:active-pane=move || active_pane.get() == SelectionSource::Filter
+        >
             <div class="filter-input-container">
                 <input 
                     type="text" 
@@ -128,6 +139,7 @@ pub fn FilterPane() -> impl IntoView {
                     value=filter_text
                     on:input=on_input
                     on:keydown=on_key_down
+                    on:focus=move |_| set_active_pane.set(SelectionSource::Filter)
                 />
             </div>
             <PaneIndexProgress

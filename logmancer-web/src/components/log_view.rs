@@ -1,4 +1,6 @@
-use crate::components::context::{LogFileContext, SelectionContext, SelectionSource};
+use crate::components::context::{
+    ActivePaneContext, LogFileContext, SelectionContext, SelectionSource,
+};
 use crate::components::filter_pane::FilterPane;
 use crate::components::main_pane::MainPane;
 use leptos::html;
@@ -13,6 +15,7 @@ pub fn LogView() -> impl IntoView {
     let (tail, set_tail) = signal(false);
     let (selected_original_line, set_selected_original_line) = signal(None::<usize>);
     let (selected_line_source, set_selected_line_source) = signal(SelectionSource::Main);
+    let (active_pane, set_active_pane) = signal(SelectionSource::Main);
     let (filter_height_percent, set_filter_height_percent) = signal(30.0_f64);
     let (is_resizing, set_is_resizing) = signal(false);
     let log_view_ref: NodeRef<html::Div> = NodeRef::new();
@@ -53,6 +56,11 @@ pub fn LogView() -> impl IntoView {
         set_selected_line_source,
     });
 
+    provide_context(ActivePaneContext {
+        active_pane,
+        set_active_pane,
+    });
+
     view! {
         <div
             node_ref=log_view_ref
@@ -68,7 +76,13 @@ pub fn LogView() -> impl IntoView {
             on:pointerleave=move |_| set_is_resizing.set(false)
         >
             <div
-                class="main-pane-container"
+                class=move || {
+                    if active_pane.get() == SelectionSource::Main {
+                        "main-pane-container pane-active"
+                    } else {
+                        "main-pane-container pane-inactive"
+                    }
+                }
                 style=move || {
                     let main_height_percent = 100.0 - filter_height_percent.get();
                     format!("flex: {main_height_percent} {main_height_percent} 0;")
@@ -78,7 +92,13 @@ pub fn LogView() -> impl IntoView {
             </div>
             <div class="divider" on:pointerdown=move |_| set_is_resizing.set(true)></div>
             <div
-                class="filter-pane-container"
+                class=move || {
+                    if active_pane.get() == SelectionSource::Filter {
+                        "filter-pane-container pane-active"
+                    } else {
+                        "filter-pane-container pane-inactive"
+                    }
+                }
                 style=move || {
                     let filter_height_percent = filter_height_percent.get();
                     format!("flex: {filter_height_percent} {filter_height_percent} 0;")

@@ -21,6 +21,12 @@ pub struct SelectionContext {
     pub set_selected_line_source: WriteSignal<SelectionSource>,
 }
 
+#[derive(Clone)]
+pub struct ActivePaneContext {
+    pub active_pane: ReadSignal<SelectionSource>,
+    pub set_active_pane: WriteSignal<SelectionSource>,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum SelectionSource {
     Main,
@@ -39,4 +45,5 @@ pub struct LogViewContext {
     pub set_selected_line: WriteSignal<Option<usize>>,
     pub selection_source: SelectionSource,
     pub set_selected_line_source: WriteSignal<SelectionSource>,
+    pub set_active_pane: WriteSignal<SelectionSource>,
 }
