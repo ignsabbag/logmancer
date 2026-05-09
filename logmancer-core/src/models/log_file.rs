@@ -9,11 +9,10 @@ pub struct LogFile {
     pub size: u64,
     pub index: Vec<usize>,
     pub filter: Vec<bool>,
-    pub regex: Option<String>
+    pub regex: Option<String>,
 }
 
 impl LogFile {
-
     pub fn new(path: String) -> io::Result<LogFile> {
         let file = File::open(&path)?;
         let mut index = Vec::<usize>::new();
@@ -24,8 +23,7 @@ impl LogFile {
             size: file.metadata()?.len(),
             index,
             filter: Vec::<bool>::new(),
-            regex: None
+            regex: None,
         })
     }
-
 }

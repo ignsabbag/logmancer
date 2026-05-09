@@ -11,13 +11,12 @@ pub struct PageResult {
     pub lines: Vec<PageLine>,
     pub start_line: usize,
     pub total_lines: usize,
-    pub indexing_progress: f64
+    pub indexing_progress: f64,
 }
 
 impl PartialEq for PageResult {
     fn eq(&self, other: &Self) -> bool {
-        self.start_line == other.start_line &&
-            self.total_lines == other.total_lines
+        self.start_line == other.start_line && self.total_lines == other.total_lines
     }
 }
 

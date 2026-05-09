@@ -1,10 +1,10 @@
-use std::time::Duration;
 use crate::components::context::{LogFileContext, LogViewContext};
 use leptos::context::use_context;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::{component, html, view, IntoView};
 use logmancer_core::PageResult;
+use std::time::Duration;
 
 const MAX_SPACER_HEIGHT: f64 = 10_000_000.0;
 const BASE_LINES: f64 = 10_000.0;
@@ -12,10 +12,7 @@ const LINE_HEIGHT: f64 = 20.0;
 
 #[component]
 pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
-    let LogFileContext {
-        set_tail,
-        ..
-    } = use_context().expect("");
+    let LogFileContext { set_tail, .. } = use_context().expect("");
 
     let LogViewContext {
         set_start_line,
@@ -47,25 +44,33 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
     let on_scroll = move |_| {
         if let Some(scroll) = scroll_ref.get() {
             log!("Programmatic Scroll: {}", programmatic_scroll.get());
-            if programmatic_scroll.get() { return; }
+            if programmatic_scroll.get() {
+                return;
+            }
 
             if let Some(page_result) = page_result.get() {
                 log!("Scroll detected: {}", scroll.scroll_top());
                 if scroll_debounce.get().is_none() {
                     let timeout_handle = set_timeout_with_handle(
                         move || {
-                            let ratio = page_result.total_lines as f64 * scroll.scroll_top() as f64 / scroll.scroll_height() as f64;
+                            let ratio = page_result.total_lines as f64 * scroll.scroll_top() as f64
+                                / scroll.scroll_height() as f64;
                             let approx_line = ratio.floor() as usize;
                             log!("Scrolling to line {}", approx_line);
                             if page_result.start_line != approx_line {
-                                log!("Updating start_line by scrollbar. Old: {}. New: {}", page_result.start_line, approx_line);
+                                log!(
+                                    "Updating start_line by scrollbar. Old: {}. New: {}",
+                                    page_result.start_line,
+                                    approx_line
+                                );
                                 update_tail(approx_line, page_result);
                                 set_start_line.set(approx_line);
                             }
                             set_scroll_debounce.set(None);
                         },
-                        Duration::from_millis(300)
-                    ).ok();
+                        Duration::from_millis(300),
+                    )
+                    .ok();
                     set_scroll_debounce.set(timeout_handle);
                 }
             }
@@ -75,16 +80,24 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
     let spacer_height = Memo::new(move |_| {
         if let Some(page_result) = page_result.get() {
             calculate_spacer_height(page_result.total_lines)
-        } else { 0 }
+        } else {
+            0
+        }
     });
 
     let scroll_pos = Memo::new(move |_| {
         if let Some(page_result) = page_result.get() {
-            log!("Calculating scroll position. Height: {}. StartLine: {}. TotalLines: {}",
-                    spacer_height.get(), page_result.start_line, page_result.total_lines);
+            log!(
+                "Calculating scroll position. Height: {}. StartLine: {}. TotalLines: {}",
+                spacer_height.get(),
+                page_result.start_line,
+                page_result.total_lines
+            );
             let ratio = page_result.start_line as f64 / page_result.total_lines as f64;
             (ratio * spacer_height.get() as f64).ceil() as i32
-        } else { 0 }
+        } else {
+            0
+        }
     });
 
     Effect::new(move || {
@@ -94,13 +107,19 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
             scroll.set_scroll_top(scroll_pos.get());
 
             if let Some(spacer) = spacer_ref.get() {
-                (*spacer).style().set_property("height", format!("{}px", spacer_height.get()).as_str()).unwrap();
+                (*spacer)
+                    .style()
+                    .set_property("height", format!("{}px", spacer_height.get()).as_str())
+                    .unwrap();
             }
 
-            set_timeout(move || set_programmatic_scroll.set(false), Duration::from_millis(50));
+            set_timeout(
+                move || set_programmatic_scroll.set(false),
+                Duration::from_millis(50),
+            );
         }
     });
-    
+
     Effect::new(move || {
         if let Some(page_result) = page_result.get() {
             if page_result.indexing_progress < 1.0 && index_debounce.get().is_none() {
@@ -108,9 +127,10 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
                     move || {
                         set_start_line.notify();
                         set_index_debounce.set(None);
-                    }, 
-                    Duration::from_secs(1)
-                ).ok();
+                    },
+                    Duration::from_secs(1),
+                )
+                .ok();
                 set_index_debounce.set(handle);
             }
         }

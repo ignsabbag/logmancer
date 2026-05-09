@@ -38,7 +38,7 @@ pub struct LogViewContext {
     pub set_start_line: WriteSignal<usize>,
     pub page_size: ReadSignal<usize>,
     pub set_page_size: WriteSignal<usize>,
-    pub log_page: LocalResource<Result<PageResult,ServerFnError>>,
+    pub log_page: LocalResource<Result<PageResult, ServerFnError>>,
     pub indexing_progress: ReadSignal<f64>,
     pub set_indexing_progress: WriteSignal<f64>,
     pub selected_line: ReadSignal<Option<usize>>,
