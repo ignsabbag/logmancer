@@ -51,17 +51,19 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 
     let (wheel_lines, set_wheel_lines) = signal(0_i32);
     let (debounce, set_debounce) = signal(None::<TimeoutHandle>);
-    let (interval, set_interval) = signal(None::<IntervalHandle>);
-    let (active_key, set_active_key) = signal(None::<String>);
-
     let (page_result, set_page_result) = signal(None::<PageResult>);
+
+    let is_at_end = move |result: &PageResult| {
+        result.start_line.saturating_add(page_size.get()) >= result.total_lines
+    };
 
     let update_tail = move |new_line: usize| {
         set_tail.update_untracked(move |current| {
             let page_result = page_result.get().unwrap();
             if page_result.start_line > new_line {
                 log!("Updating tail to false");
-                *current = false
+                *current = false;
+                set_follow.set(false);
             } else if new_line.saturating_add(page_size.get()) >= page_result.total_lines {
                 log!("Updating tail to true");
                 *current = true
@@ -79,6 +81,11 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                 set_start_line.set(new_line);
             }
             ARROW_DOWN => {
+                if is_at_end(&page_result) {
+                    set_tail.set(true);
+                    set_follow.set(true);
+                    return;
+                }
                 let new_line = page_result.start_line.saturating_add(MIN_JUMP as usize);
                 update_tail(new_line);
                 set_start_line.set(new_line);
@@ -89,6 +96,11 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                 set_start_line.set(new_line);
             }
             PAGE_DOWN => {
+                if is_at_end(&page_result) {
+                    set_tail.set(true);
+                    set_follow.set(true);
+                    return;
+                }
                 let new_line = page_result.start_line.saturating_add(page_size.get());
                 update_tail(new_line);
                 set_start_line.set(new_line);
@@ -107,34 +119,15 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         set_active_pane.set(selection_source);
         let key = ev.key();
         if KEYS.contains(&key.as_str()) {
-            if active_key.get() == Some(key.clone()) {
-                return;
-            }
-            set_active_key.set(Some(key.clone()));
-
-            let result = set_interval_with_handle(
-                move || {
-                    if let Some(key) = active_key.get() {
-                        process_key(&key)
-                    }
-                },
-                Duration::from_millis(DEBOUNCE_MS),
-            );
-
-            if let Ok(handle) = result {
-                set_interval.set(Some(handle));
-            }
+            ev.prevent_default();
+            process_key(&key);
         }
     };
 
     let on_key_up = move |ev: KeyboardEvent| {
         let key = ev.key();
-        process_key(&key);
         if KEYS.contains(&key.as_str()) {
-            if let Some(handle) = interval.get() {
-                handle.clear();
-            }
-            set_active_key.set(None);
+            ev.prevent_default();
         }
     };
 
@@ -167,6 +160,12 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                                 .saturating_sub(delta_lines.unsigned_abs() as usize)
                         } else {
                             log!("Scrolling down {} lines", delta_lines);
+                            if is_at_end(&page_result) {
+                                set_tail.set(true);
+                                set_follow.set(true);
+                                set_debounce.set(None);
+                                return;
+                            }
                             page_result
                                 .start_line
                                 .saturating_add(delta_lines as usize)
@@ -176,7 +175,8 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                             log!("Updating start_line by wheel to: {}", new_line);
                             set_tail.update_untracked(move |current| {
                                 if page_result.start_line > new_line {
-                                    *current = false
+                                    *current = false;
+                                    set_follow.set(false);
                                 } else if new_line + page_size.get() > page_result.total_lines {
                                     *current = true
                                 }
