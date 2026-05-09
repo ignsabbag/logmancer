@@ -46,11 +46,6 @@ jobs:
             cache_key: ubuntu-workspace
             test_command: cargo test --workspace --verbose
             clippy: true
-          - name: windows 2025 core
-            os: windows-2025
-            cache_key: windows-2025-core
-            test_command: cargo test -p logmancer-core --verbose
-            clippy: false
           - name: windows 2025 vs2026 core
             os: windows-2025-vs2026
             cache_key: windows-2025-vs2026-core
