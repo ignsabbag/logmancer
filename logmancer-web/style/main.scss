@@ -156,6 +156,7 @@ body {
   overflow: hidden;
   font-family: monospace;
   display: flex;
+  flex-direction: column;
 }
 
 .content {
@@ -165,6 +166,8 @@ body {
   overflow-x: auto;
   overflow-y: hidden;
   position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
 .line-numbers {
@@ -286,6 +289,19 @@ body {
   display: flex;
   flex-direction: column;
   font-family: monospace;
+}
+
+.auto-scroll-status {
+  border-top: 1px solid #ddd;
+  background: #f8f8f8;
+  color: #555;
+  font-size: 11px;
+  line-height: 1;
+  padding: 2px 6px;
+  min-height: 15px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .filter-input-container {

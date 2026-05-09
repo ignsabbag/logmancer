@@ -1,4 +1,5 @@
 use crate::components::async_functions::fetch_page;
+use crate::components::auto_scroll_status::AutoScrollStatus;
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{
@@ -47,16 +48,23 @@ pub fn MainPane() -> impl IntoView {
         set_active_pane,
     } = use_context().expect("ActivePaneContext not found");
 
-    let div_ref = NodeRef::<Div>::new();    
+    let div_ref = NodeRef::<Div>::new();
     let (content_width, set_content_width) = signal(2048_f64);
     let (content_height, set_content_height) = signal(1080_f64);
 
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
     let (indexing_progress, set_indexing_progress) = signal(0_f64);
-    let log_page = LocalResource::new(move ||
-        fetch_page(file_id.get(), start_line.get(), page_size.get(), tail.get(), follow.get()));
-    
+    let log_page = LocalResource::new(move || {
+        fetch_page(
+            file_id.get(),
+            start_line.get(),
+            page_size.get(),
+            tail.get(),
+            follow.get(),
+        )
+    });
+
     let log_view_context = LogViewContext {
         set_start_line,
         page_size,
@@ -77,7 +85,8 @@ pub fn MainPane() -> impl IntoView {
         }
 
         if let Some(line_number) = selected_original_line.get() {
-            let reveal_start_line = reveal_start_line_for_selected_line(line_number, page_size.get());
+            let reveal_start_line =
+                reveal_start_line_for_selected_line(line_number, page_size.get());
             set_tail.set(false);
             set_follow.set(false);
             set_start_line.set(reveal_start_line);
@@ -86,24 +95,24 @@ pub fn MainPane() -> impl IntoView {
 
     Effect::new(move || {
         use_resize_observer(div_ref, move |entries, _observer| {
-                let rect = entries[0].content_rect();
-                if content_width.get() != rect.width() {
-                    log!("Updating content width to {}", rect.width());
-                    set_content_width.set(rect.width());
-                }
-                if content_height.get() != rect.height() {
-                    log!("Updating content height to {}", rect.height());
-                    set_content_height.set(rect.height());
+            let rect = entries[0].content_rect();
+            if content_width.get() != rect.width() {
+                log!("Updating content width to {}", rect.width());
+                set_content_width.set(rect.width());
+            }
+            if content_height.get() != rect.height() {
+                log!("Updating content height to {}", rect.height());
+                set_content_height.set(rect.height());
 
-                    let lines = (rect.height() / LINE_HEIGHT) as usize;
-                    if lines != page_size.get() {
-                        log!("Updating page_size to {}", lines);
-                        set_page_size.set(lines);
-                    }
+                let lines = (rect.height() / LINE_HEIGHT) as usize;
+                if lines != page_size.get() {
+                    log!("Updating page_size to {}", lines);
+                    set_page_size.set(lines);
                 }
-            });
+            }
+        });
     });
-    
+
     view! {
         <div
             class="main-pane"
@@ -118,6 +127,7 @@ pub fn MainPane() -> impl IntoView {
                 <ContentLines context=log_view_context.clone() />
                 <ContentScroll context=log_view_context.clone() />
             </div>
+            <AutoScrollStatus />
         </div>
     }
 }
