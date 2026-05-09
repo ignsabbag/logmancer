@@ -94,7 +94,9 @@ pub fn try_open_initial_file(
 ) -> Option<String> {
     use tracing::{error, info, warn};
 
-    let path = initial_path.map(str::trim).filter(|path| !path.is_empty())?;
+    let path = initial_path
+        .map(str::trim)
+        .filter(|path| !path.is_empty())?;
 
     info!("Attempting to open initial file path={}", path);
     match registry.open_file(path) {

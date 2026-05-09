@@ -1,9 +1,9 @@
+use crate::api::commons::{ReadPageRequest, TailRequest};
+use crate::api::config::AppState;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
-use crate::api::commons::{ReadPageRequest, TailRequest};
-use crate::api::config::AppState;
 use tracing::debug;
 
 pub async fn read_page(
@@ -25,7 +25,10 @@ pub async fn read_page(
     }
 }
 
-pub async fn tail(State(app_state): State<AppState>, query: Query<TailRequest>) -> impl IntoResponse {
+pub async fn tail(
+    State(app_state): State<AppState>,
+    query: Query<TailRequest>,
+) -> impl IntoResponse {
     debug!("payload.path: {:?}", query);
 
     match app_state.registry.get_reader(&query.file_id) {

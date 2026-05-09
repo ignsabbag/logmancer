@@ -49,7 +49,10 @@ pub async fn upload_file(
         let mut temp_file = match std::fs::File::create(&path) {
             Ok(file) => file,
             Err(err) => {
-                error!("Error creating temp uploaded file path={:?} error={}", path, err);
+                error!(
+                    "Error creating temp uploaded file path={:?} error={}",
+                    path, err
+                );
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json("Could not store temporary uploaded file.".to_string()),
@@ -77,7 +80,10 @@ pub async fn upload_file(
 
             uploaded_bytes += chunk.len();
             if let Err(err) = temp_file.write_all(&chunk) {
-                error!("Error writing temp uploaded file path={:?} error={}", path, err);
+                error!(
+                    "Error writing temp uploaded file path={:?} error={}",
+                    path, err
+                );
                 let _ = std::fs::remove_file(&path);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -120,7 +126,10 @@ pub async fn upload_file(
         )
             .into_response(),
         Err(err) => {
-            error!("Error opening uploaded file path={} error={}", path_string, err);
+            error!(
+                "Error opening uploaded file path={} error={}",
+                path_string, err
+            );
             (
                 StatusCode::BAD_REQUEST,
                 Json(format!("Could not open uploaded file: {err}")),

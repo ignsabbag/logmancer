@@ -60,7 +60,12 @@ impl<'a> FileReadOps<'a> {
     /// Returns the total number of lines indexed.
     /// This may not be the total number of matches if filter indexing is in progress.
     pub fn filtered_lines(&self) -> io::Result<usize> {
-        Ok(self.log_file.filter.iter().filter(|matched| **matched).count())
+        Ok(self
+            .log_file
+            .filter
+            .iter()
+            .filter(|matched| **matched)
+            .count())
     }
 
     /// Returns how many source lines have already been processed by the filter worker.

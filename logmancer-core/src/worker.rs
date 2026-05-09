@@ -39,10 +39,7 @@ pub fn spawn_reload_worker(
     });
 }
 
-pub fn spawn_filter_worker(
-    mut write_ops: FileWriteOps,
-    filter_receiver: Receiver<Option<String>>,
-) {
+pub fn spawn_filter_worker(mut write_ops: FileWriteOps, filter_receiver: Receiver<Option<String>>) {
     std::thread::spawn(move || {
         loop {
             select! {
