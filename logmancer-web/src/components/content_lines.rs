@@ -151,15 +151,11 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                 update_tail(0);
                 set_start_line.set(0);
             }
-            "G" => {
-                if can_auto_enable_global_follow(selection_source) {
-                    set_tail.set(true);
-                }
+            "G" if can_auto_enable_global_follow(selection_source) => {
+                set_tail.set(true);
             }
-            "f" | "F" => {
-                if can_mutate_global_follow_state(selection_source) {
-                    set_follow.update(|current| *current = !current.to_owned());
-                }
+            "f" | "F" if can_mutate_global_follow_state(selection_source) => {
+                set_follow.update(|current| *current = !current.to_owned());
             }
             _ => (),
         }
