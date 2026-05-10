@@ -8,11 +8,11 @@ use crossterm::{
     style::Print,
     terminal,
 };
-use log::{debug, error, LevelFilter};
+use log::{LevelFilter, debug, error};
 use logmancer_core::LogReader;
 use std::env;
 use std::fs::OpenOptions;
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 use std::{process, time};
 
 fn main() -> std::io::Result<()> {
@@ -50,7 +50,6 @@ fn main() -> std::io::Result<()> {
     let mut end_reached = false;
 
     loop {
-
         let (columns, rows) = terminal::size()?;
         if rows <= 2 || columns <= 8 {
             continue;
@@ -72,7 +71,7 @@ fn main() -> std::io::Result<()> {
             Ok(page_result) => {
                 page_first_line = page_result.start_line;
                 page_result
-            },
+            }
             Err(e) => {
                 error!("Error reading file: {e}");
                 break;
@@ -90,8 +89,14 @@ fn main() -> std::io::Result<()> {
             };
 
             // Header
-            print_row!(0, "File: {} | Follow Mode: {} | Total Lines: {}{}",
-                &args[1], if follow_mode { "ON" } else { "OFF" }, page_result.total_lines, indexed);
+            print_row!(
+                0,
+                "File: {} | Follow Mode: {} | Total Lines: {}{}",
+                &args[1],
+                if follow_mode { "ON" } else { "OFF" },
+                page_result.total_lines,
+                indexed
+            );
             print_row!(1, "{}", "-".repeat(columns as usize));
 
             // Lines
@@ -102,8 +107,13 @@ fn main() -> std::io::Result<()> {
                 .unwrap_or(page_result.start_line + page_size);
             let left_offset = last_line.to_string().len() + 1;
             for (i, line) in page_result.lines.iter().enumerate() {
-                print_row!(i + 2, "{:<left_offset$}{} {}", line.number, "|",
-                    trunc_str(line.text.trim_end(), columns as usize - left_offset - 2));
+                print_row!(
+                    i + 2,
+                    "{:<left_offset$}{} {}",
+                    line.number,
+                    "|",
+                    trunc_str(line.text.trim_end(), columns as usize - left_offset - 2)
+                );
             }
 
             last_page_result = Some(page_result);

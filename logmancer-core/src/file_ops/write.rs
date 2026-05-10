@@ -2,7 +2,7 @@ use crate::models::log_file::LogFile;
 use memmap2::Mmap;
 use regex::Regex;
 use std::cmp::min;
-use std::fs::{metadata, File};
+use std::fs::{File, metadata};
 use std::io;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -11,13 +11,12 @@ const INDEX_MAX_BYTES: usize = 1024 * 1024; // 1MB
 const INDEX_MAX_LINES: usize = 1000;
 
 pub struct FileWriteOps {
-    log_file: Arc<RwLock<LogFile>>
+    log_file: Arc<RwLock<LogFile>>,
 }
 
 impl FileWriteOps {
-
     pub fn new(log_file: Arc<RwLock<LogFile>>) -> Self {
-        FileWriteOps {log_file}
+        FileWriteOps { log_file }
     }
 
     /// Checks the file size and resets mmap and size
@@ -39,7 +38,7 @@ impl FileWriteOps {
     /// Indexes lines up to a maximum of INDEX_MAX_BYTES bytes. Returns false unless the end of the file is reached.
     pub fn index_lines(&mut self) -> io::Result<bool> {
         let mut file_lock = self.log_file.write().unwrap();
-        
+
         let start_pos = *file_lock.index.last().unwrap();
         let end_pos = min(file_lock.mmap.len(), start_pos + INDEX_MAX_BYTES);
         let end_reached = file_lock.mmap.len() <= start_pos + INDEX_MAX_BYTES;

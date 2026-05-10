@@ -1,7 +1,10 @@
 use crate::components::{Home, LogView};
 use leptos::prelude::*;
 use leptos_meta::{provide_meta_context, Stylesheet, Title};
-use leptos_router::{components::{Route, Router, Routes}, path};
+use leptos_router::{
+    components::{Route, Router, Routes},
+    path,
+};
 
 #[component]
 pub fn App() -> impl IntoView {

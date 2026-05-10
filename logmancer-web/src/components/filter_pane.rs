@@ -1,5 +1,4 @@
 use crate::components::async_functions::{apply_filter as apply_filter_fetch, fetch_filter_page};
-use crate::components::auto_scroll_status::AutoScrollStatus;
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{
@@ -148,7 +147,6 @@ pub fn FilterPane() -> impl IntoView {
                 <ContentLines context=log_view_context.clone() />
                 <ContentScroll context=log_view_context.clone() />
             </div>
-            <AutoScrollStatus />
         </div>
     }
 }

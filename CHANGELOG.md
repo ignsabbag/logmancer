@@ -11,6 +11,12 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Project roadmap in `ROADMAP.md`.
 - Selected line highlighting in the web/desktop main viewer and filter panel (#15).
 - Filter result selection now synchronizes with the main viewer, selecting and revealing the matching original log line (#16).
+- Added a visible auto-scroll/follow mode indicator in the web/desktop UI (#18).
+
+### Fixes
+
+- Web keyboard navigation now supports repeated arrow/page movement plus `g`, `G`, and `f` shortcuts.
+- Web main viewer keeps auto-scroll status scoped to the main pane and avoids filter-panel scroll/follow coupling.
 
 ## [0.1.0] - 2026-05-05
 

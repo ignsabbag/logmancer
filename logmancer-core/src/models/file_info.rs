@@ -4,5 +4,5 @@ use serde::{Deserialize, Serialize};
 pub struct FileInfo {
     pub path: String,
     pub total_lines: usize,
-    pub indexing_progress: f64
+    pub indexing_progress: f64,
 }

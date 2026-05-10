@@ -1,8 +1,8 @@
 use crate::file_ops::read::FileReadOps;
 use crate::file_ops::write::FileWriteOps;
 use crate::models::log_file::LogFile;
-use crate::worker::{spawn_reload_worker, spawn_filter_worker};
-use crossbeam_channel::{unbounded, Sender};
+use crate::worker::{spawn_filter_worker, spawn_reload_worker};
+use crossbeam_channel::{Sender, unbounded};
 use log::info;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -15,7 +15,6 @@ pub struct LogFileHandler {
 }
 
 impl LogFileHandler {
-
     pub fn new(path: String) -> io::Result<Self> {
         let (reload_sender, reload_receiver) = unbounded::<()>();
         let (filter_sender, filter_receiver) = unbounded::<Option<String>>();
@@ -30,7 +29,11 @@ impl LogFileHandler {
 
         reload_sender.send(()).unwrap();
 
-        Ok(LogFileHandler { log_file, reload_sender, filter_sender })
+        Ok(LogFileHandler {
+            log_file,
+            reload_sender,
+            filter_sender,
+        })
     }
 
     pub fn reload(&mut self) {
@@ -54,5 +57,4 @@ impl LogFileHandler {
     pub fn read_ops(&self) -> FileReadOps<'_> {
         FileReadOps::new(self.log_file.read().unwrap())
     }
-
 }

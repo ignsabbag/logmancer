@@ -1,4 +1,6 @@
-use crate::components::context::{LogFileContext, LogViewContext};
+use crate::components::context::{
+    ActivePaneContext, LogFileContext, LogViewContext, SelectionSource,
+};
 use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
@@ -15,7 +17,37 @@ const ARROW_UP: &str = "ArrowUp";
 const ARROW_DOWN: &str = "ArrowDown";
 const PAGE_UP: &str = "PageUp";
 const PAGE_DOWN: &str = "PageDown";
-const KEYS: [&str; 4] = [ARROW_DOWN, ARROW_UP, PAGE_DOWN, PAGE_UP];
+
+fn is_handled_key(key: &str) -> bool {
+    matches!(
+        key,
+        ARROW_DOWN | ARROW_UP | PAGE_DOWN | PAGE_UP | "g" | "G" | "f" | "F"
+    )
+}
+
+fn is_editable_target(tag_name: Option<&str>, content_editable: bool) -> bool {
+    if content_editable {
+        return true;
+    }
+
+    matches!(tag_name, Some("INPUT") | Some("TEXTAREA") | Some("SELECT"))
+}
+
+fn should_restore_focus(
+    is_active_panel: bool,
+    active_tag_name: Option<&str>,
+    content_editable: bool,
+) -> bool {
+    is_active_panel && !is_editable_target(active_tag_name, content_editable)
+}
+
+fn can_auto_enable_global_follow(selection_source: SelectionSource) -> bool {
+    matches!(selection_source, SelectionSource::Main)
+}
+
+fn can_mutate_global_follow_state(selection_source: SelectionSource) -> bool {
+    matches!(selection_source, SelectionSource::Main)
+}
 
 #[component]
 pub fn ContentLines(context: LogViewContext) -> impl IntoView {
@@ -40,6 +72,8 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         ..
     } = context;
 
+    let ActivePaneContext { active_pane, .. } = use_context().expect("ActivePaneContext not found");
+
     let select_line = move |line_number| {
         set_active_pane.set(selection_source);
         set_selected_line_source.set(selection_source);
@@ -58,6 +92,10 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
     };
 
     let update_tail = move |new_line: usize| {
+        if !can_mutate_global_follow_state(selection_source) {
+            return;
+        }
+
         set_tail.update_untracked(move |current| {
             let page_result = page_result.get().unwrap();
             if page_result.start_line > new_line {
@@ -82,8 +120,10 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
             }
             ARROW_DOWN => {
                 if is_at_end(&page_result) {
-                    set_tail.set(true);
-                    set_follow.set(true);
+                    if can_auto_enable_global_follow(selection_source) {
+                        set_tail.set(true);
+                        set_follow.set(true);
+                    }
                     return;
                 }
                 let new_line = page_result.start_line.saturating_add(MIN_JUMP as usize);
@@ -97,8 +137,10 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
             }
             PAGE_DOWN => {
                 if is_at_end(&page_result) {
-                    set_tail.set(true);
-                    set_follow.set(true);
+                    if can_auto_enable_global_follow(selection_source) {
+                        set_tail.set(true);
+                        set_follow.set(true);
+                    }
                     return;
                 }
                 let new_line = page_result.start_line.saturating_add(page_size.get());
@@ -109,8 +151,12 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                 update_tail(0);
                 set_start_line.set(0);
             }
-            "G" => set_tail.set(true),
-            "f" | "F" => set_follow.update(|current| *current = !current.to_owned()),
+            "G" if can_auto_enable_global_follow(selection_source) => {
+                set_tail.set(true);
+            }
+            "f" | "F" if can_mutate_global_follow_state(selection_source) => {
+                set_follow.update(|current| *current = !current.to_owned());
+            }
             _ => (),
         }
     };
@@ -118,7 +164,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
     let on_key_down = move |ev: KeyboardEvent| {
         set_active_pane.set(selection_source);
         let key = ev.key();
-        if KEYS.contains(&key.as_str()) {
+        if is_handled_key(&key) {
             ev.prevent_default();
             process_key(&key);
         }
@@ -126,7 +172,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 
     let on_key_up = move |ev: KeyboardEvent| {
         let key = ev.key();
-        if KEYS.contains(&key.as_str()) {
+        if is_handled_key(&key) {
             ev.prevent_default();
         }
     };
@@ -161,8 +207,10 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         } else {
                             log!("Scrolling down {} lines", delta_lines);
                             if is_at_end(&page_result) {
-                                set_tail.set(true);
-                                set_follow.set(true);
+                                if can_auto_enable_global_follow(selection_source) {
+                                    set_tail.set(true);
+                                    set_follow.set(true);
+                                }
                                 set_debounce.set(None);
                                 return;
                             }
@@ -173,14 +221,16 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         };
                         if page_result.start_line != new_line {
                             log!("Updating start_line by wheel to: {}", new_line);
-                            set_tail.update_untracked(move |current| {
-                                if page_result.start_line > new_line {
-                                    *current = false;
-                                    set_follow.set(false);
-                                } else if new_line + page_size.get() > page_result.total_lines {
-                                    *current = true
-                                }
-                            });
+                            if can_mutate_global_follow_state(selection_source) {
+                                set_tail.update_untracked(move |current| {
+                                    if page_result.start_line > new_line {
+                                        *current = false;
+                                        set_follow.set(false);
+                                    } else if new_line + page_size.get() > page_result.total_lines {
+                                        *current = true
+                                    }
+                                });
+                            }
                             set_start_line.set(new_line);
                         }
                         set_debounce.set(None);
@@ -206,6 +256,40 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         .unwrap();
                 }
             });
+        }
+    });
+
+    Effect::new(move || {
+        page_result.track();
+
+        let Some(div) = div_ref.get() else {
+            return;
+        };
+
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Some(document) = window.document() else {
+            return;
+        };
+
+        let (tag_name, content_editable) = match document.active_element() {
+            Some(active) => (
+                Some(active.tag_name()),
+                active
+                    .get_attribute("contenteditable")
+                    .map(|value| value.eq_ignore_ascii_case("true") || value.is_empty())
+                    .unwrap_or(false),
+            ),
+            None => (None, false),
+        };
+
+        if should_restore_focus(
+            active_pane.get() == selection_source,
+            tag_name.as_deref(),
+            content_editable,
+        ) {
+            _ = div.focus();
         }
     });
 
@@ -257,5 +341,56 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                 })
             })}
         </Transition>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        can_auto_enable_global_follow, can_mutate_global_follow_state, is_editable_target,
+        is_handled_key, should_restore_focus,
+    };
+    use crate::components::context::SelectionSource;
+
+    #[test]
+    fn handled_keys_include_navigation_and_commands() {
+        assert!(is_handled_key("ArrowUp"));
+        assert!(is_handled_key("PageDown"));
+        assert!(is_handled_key("g"));
+        assert!(is_handled_key("G"));
+        assert!(is_handled_key("f"));
+        assert!(is_handled_key("F"));
+    }
+
+    #[test]
+    fn handled_keys_exclude_unrelated_keys() {
+        assert!(!is_handled_key("Enter"));
+        assert!(!is_handled_key("a"));
+    }
+
+    #[test]
+    fn editable_targets_are_detected() {
+        assert!(is_editable_target(Some("INPUT"), false));
+        assert!(is_editable_target(Some("TEXTAREA"), false));
+        assert!(is_editable_target(Some("DIV"), true));
+    }
+
+    #[test]
+    fn restore_focus_only_for_active_non_editable_target() {
+        assert!(should_restore_focus(true, Some("DIV"), false));
+        assert!(!should_restore_focus(false, Some("DIV"), false));
+        assert!(!should_restore_focus(true, Some("INPUT"), false));
+    }
+
+    #[test]
+    fn auto_follow_is_only_enabled_for_main_pane() {
+        assert!(can_auto_enable_global_follow(SelectionSource::Main));
+        assert!(!can_auto_enable_global_follow(SelectionSource::Filter));
+    }
+
+    #[test]
+    fn global_follow_state_mutation_is_only_allowed_for_main_pane() {
+        assert!(can_mutate_global_follow_state(SelectionSource::Main));
+        assert!(!can_mutate_global_follow_state(SelectionSource::Filter));
     }
 }
