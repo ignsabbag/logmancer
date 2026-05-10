@@ -150,3 +150,9 @@ cargo leptos watch --project logmancer-web
 # Desktop
 cargo tauri dev
 ```
+
+---
+
+## Project Skills
+
+- `skills/rust-quality-gate/SKILL.md` — OpenCode-compatible skill for commit/PR preparation. It requires `cargo fmt` and `cargo clippy --workspace -- -D warnings` before creating a commit or PR.
