@@ -17,6 +17,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 - Web keyboard navigation now supports repeated arrow/page movement plus `g`, `G`, and `f` shortcuts.
 - Web main viewer keeps auto-scroll status scoped to the main pane and avoids filter-panel scroll/follow coupling.
+- Web/desktop log scrolling now preserves accumulated mouse wheel and trackpad intent, avoiding stale debounced viewport updates that made fast scrolling feel like it moved backwards (#19).
 
 ## [0.1.0] - 2026-05-05
 

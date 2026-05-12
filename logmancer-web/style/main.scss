@@ -4,6 +4,10 @@
   box-sizing: border-box;
 }
 
+:root {
+  --log-line-height: 15px;
+}
+
 html,
 body {
   height: 100%;
@@ -195,9 +199,9 @@ body {
 
 .line-numbers div,
 .text-lines div {
-  height: 15px;
+  height: var(--log-line-height);
+  line-height: var(--log-line-height);
   cursor: default;
-  //line-height: 20px;
 }
 
 .text-lines div.selected {
