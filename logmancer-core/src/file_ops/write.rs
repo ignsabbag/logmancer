@@ -37,12 +37,12 @@ impl FileWriteOps {
 
     /// Indexes lines up to a maximum of INDEX_MAX_BYTES bytes. Returns false unless the end of the file is reached.
     pub fn index_lines(&mut self) -> io::Result<bool> {
-        let mut file_lock = self.log_file.write().unwrap();
-
+        let file_lock = self.log_file.read().unwrap();
         let start_pos = *file_lock.index.last().unwrap();
         let end_pos = min(file_lock.mmap.len(), start_pos + INDEX_MAX_BYTES);
         let end_reached = file_lock.mmap.len() <= start_pos + INDEX_MAX_BYTES;
-        let content = &file_lock.mmap[start_pos..end_pos];
+        let content = file_lock.mmap[start_pos..end_pos].to_vec();
+        drop(file_lock);
 
         let mut index = Vec::new();
         for (pos, byte) in content.iter().enumerate() {
@@ -50,8 +50,14 @@ impl FileWriteOps {
                 index.push(start_pos + pos + 1);
             }
         }
-        file_lock.index.extend(index);
-        Ok(end_reached)
+
+        let mut file_lock = self.log_file.write().unwrap();
+        if *file_lock.index.last().unwrap() == start_pos {
+            file_lock.index.extend(index);
+            Ok(end_reached)
+        } else {
+            Ok(false)
+        }
     }
 
     /// Sets the regex pattern and resets the filter index if a pattern is provided.
@@ -67,7 +73,6 @@ impl FileWriteOps {
     /// Indexes filtered lines up to a maximun of INDEX_MAX_LINES lines. Returns false unless the end of the file is reached.
     pub fn index_filter(&mut self) -> io::Result<bool> {
         let mut file_lock = self.log_file.write().unwrap();
-
         let pattern = match &file_lock.regex {
             Some(pat) => pat,
             None => return Ok(true),
