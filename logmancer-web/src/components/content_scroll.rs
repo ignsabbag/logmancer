@@ -1,14 +1,14 @@
 use crate::components::context::{LogFileContext, LogViewContext};
+use crate::components::diagnostics::{scroll_trace, scroll_trace_enabled};
+use crate::components::layout::{
+    LOG_LINE_HEIGHT_PX, VIRTUAL_SCROLL_BASE_LINES, VIRTUAL_SCROLL_MAX_SPACER_HEIGHT_PX,
+};
 use leptos::context::use_context;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::{component, html, view, IntoView};
 use logmancer_core::PageResult;
 use std::time::Duration;
-
-const MAX_SPACER_HEIGHT: f64 = 10_000_000.0;
-const BASE_LINES: f64 = 10_000.0;
-const LINE_HEIGHT: f64 = 20.0;
 
 #[component]
 pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
@@ -28,6 +28,9 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
     let (page_result, set_page_result) = signal(None::<PageResult>);
     let (scroll_debounce, set_scroll_debounce) = signal::<Option<TimeoutHandle>>(None);
     let (index_debounce, set_index_debounce) = signal::<Option<TimeoutHandle>>(None);
+    let (scroll_event_id, set_scroll_event_id) = signal(0_u64);
+    let (programmatic_event_id, set_programmatic_event_id) = signal(0_u64);
+    let scroll_trace = scroll_trace_enabled();
 
     let update_tail = move |new_line: usize, page_result: PageResult| {
         set_tail.update_untracked(move |current| {
@@ -43,23 +46,53 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
 
     let on_scroll = move |_| {
         if let Some(scroll) = scroll_ref.get() {
-            log!("Programmatic Scroll: {}", programmatic_scroll.get());
-            if programmatic_scroll.get() {
+            let event_id = scroll_event_id.get_untracked().saturating_add(1);
+            set_scroll_event_id.set(event_id);
+            let is_programmatic = programmatic_scroll.get();
+            scroll_trace!(
+                scroll_trace,
+                "scroll-trace scrollbar event_id={} programmatic={} scroll_top={} scroll_height={} client_height={} debounce_active={}",
+                event_id,
+                is_programmatic,
+                scroll.scroll_top(),
+                scroll.scroll_height(),
+                scroll.client_height(),
+                scroll_debounce.get_untracked().is_some()
+            );
+            if is_programmatic {
                 return;
             }
 
             if let Some(page_result) = page_result.get() {
-                log!("Scroll detected: {}", scroll.scroll_top());
                 if scroll_debounce.get().is_none() {
+                    scroll_trace!(
+                        scroll_trace,
+                        "scroll-trace scrollbar schedule event_id={} captured_start_line={} total_lines={} page_size={}",
+                        event_id,
+                        page_result.start_line,
+                        page_result.total_lines,
+                        page_size.get_untracked()
+                    );
                     let timeout_handle = set_timeout_with_handle(
                         move || {
                             let ratio = page_result.total_lines as f64 * scroll.scroll_top() as f64
                                 / scroll.scroll_height() as f64;
                             let approx_line = ratio.floor() as usize;
-                            log!("Scrolling to line {}", approx_line);
+                            scroll_trace!(
+                                scroll_trace,
+                                "scroll-trace scrollbar fire event_id={} captured_start_line={} approx_line={} scroll_top={} scroll_height={} client_height={}",
+                                event_id,
+                                page_result.start_line,
+                                approx_line,
+                                scroll.scroll_top(),
+                                scroll.scroll_height(),
+                                scroll.client_height()
+                            );
                             if page_result.start_line != approx_line {
-                                log!(
-                                    "Updating start_line by scrollbar. Old: {}. New: {}",
+                                scroll_trace!(
+                                    scroll_trace,
+                                    "scroll-trace scrollbar apply event_id={} start_line_before={} start_line_after={}",
+                                    event_id,
                                     page_result.start_line,
                                     approx_line
                                 );
@@ -87,8 +120,9 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
 
     let scroll_pos = Memo::new(move |_| {
         if let Some(page_result) = page_result.get() {
-            log!(
-                "Calculating scroll position. Height: {}. StartLine: {}. TotalLines: {}",
+            scroll_trace!(
+                scroll_trace,
+                "scroll-trace position height={} start_line={} total_lines={}",
                 spacer_height.get(),
                 page_result.start_line,
                 page_result.total_lines
@@ -102,7 +136,17 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
 
     Effect::new(move || {
         if let Some(scroll) = scroll_ref.get() {
-            log!("Updating scroll_top to {}", scroll_pos.get());
+            let event_id = programmatic_event_id.get_untracked().saturating_add(1);
+            set_programmatic_event_id.set(event_id);
+            scroll_trace!(
+                scroll_trace,
+                "scroll-trace programmatic apply event_id={} scroll_top_before={} scroll_top_after={} scroll_height={} client_height={}",
+                event_id,
+                scroll.scroll_top(),
+                scroll_pos.get(),
+                scroll.scroll_height(),
+                scroll.client_height()
+            );
             set_programmatic_scroll.set(true);
             scroll.set_scroll_top(scroll_pos.get());
 
@@ -114,7 +158,14 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
             }
 
             set_timeout(
-                move || set_programmatic_scroll.set(false),
+                move || {
+                    scroll_trace!(
+                        scroll_trace,
+                        "scroll-trace programmatic release event_id={}",
+                        event_id
+                    );
+                    set_programmatic_scroll.set(false)
+                },
                 Duration::from_millis(50),
             );
         }
@@ -155,22 +206,23 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
 ///
 /// # Algorithm
 /// Uses a hybrid approach to balance precision and performance:
-/// - **Linear scaling** (`20px/line`) for datasets ≤ 10,000 lines
+/// - **Linear scaling** using the shared log line height for datasets ≤ 10,000 lines
 /// - **Logarithmic scaling** for larger datasets to avoid overflow
 ///
 /// # Behavior
-/// - For 0-10k lines: Direct 1:20 line-to-pixel mapping
+/// - For 0-10k lines: Direct line-to-pixel mapping
 /// - For 10k-500k lines: Gradual height increase (logarithmic phase)
 /// - Above 1M lines: Hard cap at 1M pixels (browser safety)
 fn calculate_spacer_height(lines: usize) -> usize {
-    log!("Calculating spacer height");
     let lines_f64 = lines as f64;
-    let height = if lines_f64 <= BASE_LINES {
+    let height = if lines_f64 <= VIRTUAL_SCROLL_BASE_LINES {
         // Linear growth for lower values
-        lines_f64 * LINE_HEIGHT
+        lines_f64 * LOG_LINE_HEIGHT_PX
     } else {
         // Logarithmic growth for large values
-        BASE_LINES * LINE_HEIGHT + (lines_f64 / BASE_LINES).ln() * MAX_SPACER_HEIGHT / 2.0
+        VIRTUAL_SCROLL_BASE_LINES * LOG_LINE_HEIGHT_PX
+            + (lines_f64 / VIRTUAL_SCROLL_BASE_LINES).ln() * VIRTUAL_SCROLL_MAX_SPACER_HEIGHT_PX
+                / 2.0
     };
-    height.min(MAX_SPACER_HEIGHT) as usize
+    height.min(VIRTUAL_SCROLL_MAX_SPACER_HEIGHT_PX) as usize
 }

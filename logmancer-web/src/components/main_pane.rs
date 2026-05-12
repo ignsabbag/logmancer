@@ -5,6 +5,7 @@ use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{
     ActivePaneContext, LogFileContext, LogViewContext, SelectionContext, SelectionSource,
 };
+use crate::components::layout::LOG_LINE_HEIGHT_PX;
 use crate::components::pane_index_progress::PaneIndexProgress;
 use leptos::context::use_context;
 use leptos::html::Div;
@@ -12,8 +13,6 @@ use leptos::leptos_dom::log;
 use leptos::prelude::*;
 use leptos::{component, view, IntoView};
 use leptos_use::use_resize_observer;
-
-const LINE_HEIGHT: f64 = 15.0;
 
 fn reveal_start_line_for_selected_line(selected_original_line: usize, page_size: usize) -> usize {
     if selected_original_line == 0 {
@@ -104,7 +103,7 @@ pub fn MainPane() -> impl IntoView {
                 log!("Updating content height to {}", rect.height());
                 set_content_height.set(rect.height());
 
-                let lines = (rect.height() / LINE_HEIGHT) as usize;
+                let lines = (rect.height() / LOG_LINE_HEIGHT_PX) as usize;
                 if lines != page_size.get() {
                     log!("Updating page_size to {}", lines);
                     set_page_size.set(lines);

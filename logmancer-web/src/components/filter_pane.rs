@@ -4,6 +4,7 @@ use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{
     ActivePaneContext, LogFileContext, LogViewContext, SelectionContext, SelectionSource,
 };
+use crate::components::layout::LOG_LINE_HEIGHT_PX;
 use crate::components::pane_index_progress::PaneIndexProgress;
 use leptos::context::use_context;
 use leptos::ev::KeyboardEvent;
@@ -11,8 +12,6 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{component, view, IntoView};
-
-const LINE_HEIGHT: f64 = 15.0;
 
 #[component]
 pub fn FilterPane() -> impl IntoView {
@@ -105,7 +104,7 @@ pub fn FilterPane() -> impl IntoView {
             if content_height.get() != rect.height() {
                 set_content_height.set(rect.height());
 
-                let lines = (rect.height() / LINE_HEIGHT) as usize;
+                let lines = (rect.height() / LOG_LINE_HEIGHT_PX) as usize;
                 if lines != page_size.get() && lines > 0 {
                     set_page_size.set(lines);
                 }

@@ -1,6 +1,7 @@
 use crate::components::context::{
     ActivePaneContext, LogFileContext, LogViewContext, SelectionSource,
 };
+use crate::components::diagnostics::{scroll_trace, scroll_trace_enabled};
 use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
@@ -9,9 +10,9 @@ use leptos::{component, html, view, IntoView};
 use logmancer_core::PageResult;
 use std::time::Duration;
 
-const SCROLL_RATIO: f64 = 0.3;
+const SCROLL_RATIO: f64 = 0.15;
 const DEBOUNCE_MS: u64 = 200;
-const MIN_JUMP: i32 = 3;
+const MIN_JUMP: i32 = 2;
 
 const ARROW_UP: &str = "ArrowUp";
 const ARROW_DOWN: &str = "ArrowDown";
@@ -83,9 +84,11 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
     let div_ref: NodeRef<html::Div> = NodeRef::new();
     let (max_width, set_max_width) = signal(0);
 
-    let (wheel_lines, set_wheel_lines) = signal(0_i32);
+    let (wheel_target_line, set_wheel_target_line) = signal(None::<usize>);
     let (debounce, set_debounce) = signal(None::<TimeoutHandle>);
+    let (wheel_event_id, set_wheel_event_id) = signal(0_u64);
     let (page_result, set_page_result) = signal(None::<PageResult>);
+    let scroll_trace = scroll_trace_enabled();
 
     let is_at_end = move |result: &PageResult| {
         result.start_line.saturating_add(page_size.get()) >= result.total_lines
@@ -181,65 +184,126 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         set_active_pane.set(selection_source);
         ev.prevent_default();
 
+        let event_id = wheel_event_id.get_untracked().saturating_add(1);
+        set_wheel_event_id.set(event_id);
+
         let delta = ev.delta_y().abs();
         let signum = ev.delta_y().signum() as i32;
         let is_precise_scroll = ev.delta_mode() == 0;
 
-        log!("Wheel detected: {}", delta);
+        scroll_trace!(
+            scroll_trace,
+            "scroll-trace wheel event_id={} delta_y={} delta_mode={} precise={} debounce_active={}",
+            event_id,
+            ev.delta_y(),
+            ev.delta_mode(),
+            is_precise_scroll,
+            debounce.get_untracked().is_some()
+        );
         let lines_to_jump = if is_precise_scroll {
             let lines = delta * SCROLL_RATIO;
             MIN_JUMP.max(lines as i32)
         } else {
             MIN_JUMP.max((page_size.get() as f64 * SCROLL_RATIO) as i32)
         };
-        set_wheel_lines.set(lines_to_jump * signum);
+        let signed_wheel_lines = lines_to_jump * signum;
+        scroll_trace!(
+            scroll_trace,
+            "scroll-trace wheel event_id={} lines_to_jump={} signed_wheel_lines={}",
+            event_id,
+            lines_to_jump,
+            signed_wheel_lines
+        );
+
+        let Some(current_page_result) = page_result.get() else {
+            return;
+        };
+
+        if signed_wheel_lines > 0 && is_at_end(&current_page_result) {
+            if can_auto_enable_global_follow(selection_source) {
+                set_tail.set(true);
+                set_follow.set(true);
+            }
+            return;
+        }
+
+        let max_start_line = current_page_result
+            .total_lines
+            .saturating_sub(page_size.get_untracked());
+        let base_line = wheel_target_line
+            .get_untracked()
+            .unwrap_or(current_page_result.start_line);
+        let target_line = if signed_wheel_lines < 0 {
+            base_line.saturating_sub(signed_wheel_lines.unsigned_abs() as usize)
+        } else {
+            base_line
+                .saturating_add(signed_wheel_lines as usize)
+                .min(max_start_line)
+        };
+        set_wheel_target_line.set(Some(target_line));
+        scroll_trace!(
+            scroll_trace,
+            "scroll-trace wheel target event_id={} base_line={} target_line={} max_start_line={}",
+            event_id,
+            base_line,
+            target_line,
+            max_start_line
+        );
 
         if debounce.get().is_none() {
-            if let Some(page_result) = page_result.get() {
-                let handle = set_timeout_with_handle(
-                    move || {
-                        let delta_lines = wheel_lines.get();
-                        let new_line = if delta_lines < 0 {
-                            log!("Scrolling up {} lines", delta_lines);
-                            page_result
-                                .start_line
-                                .saturating_sub(delta_lines.unsigned_abs() as usize)
-                        } else {
-                            log!("Scrolling down {} lines", delta_lines);
-                            if is_at_end(&page_result) {
-                                if can_auto_enable_global_follow(selection_source) {
-                                    set_tail.set(true);
-                                    set_follow.set(true);
-                                }
-                                set_debounce.set(None);
-                                return;
-                            }
-                            page_result
-                                .start_line
-                                .saturating_add(delta_lines as usize)
-                                .min(page_result.total_lines.saturating_sub(page_size.get()))
-                        };
-                        if page_result.start_line != new_line {
-                            log!("Updating start_line by wheel to: {}", new_line);
-                            if can_mutate_global_follow_state(selection_source) {
-                                set_tail.update_untracked(move |current| {
-                                    if page_result.start_line > new_line {
-                                        *current = false;
-                                        set_follow.set(false);
-                                    } else if new_line + page_size.get() > page_result.total_lines {
-                                        *current = true
-                                    }
-                                });
-                            }
-                            set_start_line.set(new_line);
-                        }
+            scroll_trace!(
+                scroll_trace,
+                "scroll-trace wheel schedule event_id={} current_start_line={} total_lines={} page_size={}",
+                event_id,
+                current_page_result.start_line,
+                current_page_result.total_lines,
+                page_size.get_untracked()
+            );
+            let handle = set_timeout_with_handle(
+                move || {
+                    let Some(new_line) = wheel_target_line.get() else {
                         set_debounce.set(None);
-                    },
-                    Duration::from_millis(DEBOUNCE_MS),
-                )
-                .ok();
-                set_debounce.set(handle);
-            }
+                        return;
+                    };
+                    let Some(current_page_result) = page_result.get() else {
+                        set_debounce.set(None);
+                        return;
+                    };
+                    scroll_trace!(
+                        scroll_trace,
+                        "scroll-trace wheel fire event_id={} current_start_line={} target_line={}",
+                        event_id,
+                        current_page_result.start_line,
+                        new_line
+                    );
+                    if current_page_result.start_line != new_line {
+                        scroll_trace!(
+                            scroll_trace,
+                            "scroll-trace wheel apply event_id={} start_line_before={} start_line_after={}",
+                            event_id,
+                            current_page_result.start_line,
+                            new_line
+                        );
+                        if can_mutate_global_follow_state(selection_source) {
+                            set_tail.update_untracked(move |current| {
+                                if current_page_result.start_line > new_line {
+                                    *current = false;
+                                    set_follow.set(false);
+                                } else if new_line + page_size.get()
+                                    > current_page_result.total_lines
+                                {
+                                    *current = true
+                                }
+                            });
+                        }
+                        set_start_line.set(new_line);
+                    }
+                    set_debounce.set(None);
+                },
+                Duration::from_millis(DEBOUNCE_MS),
+            )
+            .ok();
+            set_debounce.set(handle);
         }
     };
 
@@ -298,6 +362,9 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
             { move || Suspend::new(async move {
                 log_page.await.map(|page_result| {
                     set_page_result.set(Some(page_result.clone()));
+                    if debounce.get_untracked().is_none() {
+                        set_wheel_target_line.set(Some(page_result.start_line));
+                    }
                     if tail.get() && follow.get() {
                         set_timeout(move || set_page_size.notify(), Duration::from_secs(1));
                     } else {
