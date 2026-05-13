@@ -34,7 +34,7 @@ pub struct ServerBrowserListResponse {
     pub entries: Vec<ServerBrowserEntry>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct ServerBrowserEntry {
     pub name: String,
     pub path: String,
