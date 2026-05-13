@@ -4,9 +4,6 @@ pub mod commons;
 pub mod config;
 
 #[cfg(feature = "ssr")]
-pub mod open_server_file;
-
-#[cfg(feature = "ssr")]
 pub mod file_info;
 
 #[cfg(feature = "ssr")]
@@ -17,3 +14,6 @@ pub mod filter;
 
 #[cfg(feature = "ssr")]
 pub mod upload_file;
+
+#[cfg(feature = "ssr")]
+pub mod server_browser;
