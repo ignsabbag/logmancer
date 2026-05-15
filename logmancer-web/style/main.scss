@@ -114,6 +114,8 @@ body {
 
 .home-server-form {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
 
   input {
@@ -122,6 +124,215 @@ body {
     border-radius: 10px;
     padding: 10px 12px;
     font-size: 0.95rem;
+  }
+}
+
+.home-server-help {
+  color: #4b5563;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.server-spotlight-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.62);
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 10vh 16px 16px;
+  backdrop-filter: blur(2px);
+}
+
+.server-spotlight {
+  width: min(760px, 96vw);
+  height: min(760px, 82vh);
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  border: 1px solid #dbe2ef;
+  border-radius: 14px;
+  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.25);
+  overflow: hidden;
+}
+
+.server-spotlight-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #e5e7eb;
+
+  h2 {
+    color: #111827;
+    font-size: 1.05rem;
+    font-weight: 650;
+  }
+
+  button {
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #374151;
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 0.86rem;
+    cursor: pointer;
+
+    &:hover {
+      background: #f9fafb;
+    }
+  }
+}
+
+.server-spotlight-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #eef2f7;
+  background: #f8fafc;
+
+  button {
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #1f2937;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 0.86rem;
+    cursor: pointer;
+
+    &:hover {
+      background: #f1f5f9;
+    }
+
+    &:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+  }
+
+  code {
+    flex: 1;
+    min-width: 0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: #fff;
+    border: 1px solid #dbe2ef;
+    border-radius: 8px;
+    color: #334155;
+    font-size: 0.8rem;
+    padding: 5px 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.server-spotlight > input[type='text'] {
+  margin: 12px 14px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+  outline: none;
+
+  &:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.14);
+  }
+}
+
+.server-spotlight-results {
+  flex: 1;
+  margin: 0 14px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  min-height: 220px;
+  max-height: none;
+  overflow-y: auto;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+
+  p {
+    padding: 10px 12px;
+    color: #64748b;
+    font-size: 0.88rem;
+  }
+}
+
+.server-spotlight-error {
+  margin: 0 14px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  padding: 10px 12px;
+  flex-shrink: 0;
+}
+
+.server-spotlight-entry {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid #f1f5f9;
+  background: #fff;
+  color: #111827;
+  text-align: left;
+  padding: 9px 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  &:hover {
+    background: #f8fafc;
+  }
+
+  &.is-selected {
+    background: #eff6ff;
+    box-shadow: inset 0 0 0 1px #bfdbfe;
+  }
+
+  span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.server-spotlight-footer {
+  padding: 12px 14px 14px;
+  border-top: 1px solid #eef2f7;
+  display: flex;
+  justify-content: flex-end;
+
+  button {
+    border: 0;
+    border-radius: 10px;
+    padding: 10px 14px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      background: #1d4ed8;
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
   }
 }
 

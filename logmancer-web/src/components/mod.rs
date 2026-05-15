@@ -12,9 +12,11 @@ mod log_view;
 mod main_pane;
 mod pane_index_progress;
 mod progress_bar;
+mod server_file_spotlight;
 
 pub use app::App;
 pub use context::Port;
 pub use filter_pane::FilterPane;
 pub use home::Home;
 pub use log_view::LogView;
+pub use server_file_spotlight::ServerFileSpotlight;

@@ -1,4 +1,8 @@
-use crate::api::commons::{ApplyFilterRequest, ReadFilterRequest, ReadPageRequest, TailRequest};
+use crate::api::commons::{
+    ApiError, ApplyFilterRequest, OpenServerFileResponse, ReadFilterRequest, ReadPageRequest,
+    ServerBrowserListRequest, ServerBrowserListResponse, ServerBrowserOpenRequest,
+    ServerBrowserStatusResponse, TailRequest,
+};
 use leptos::prelude::{window, ServerFnError};
 use leptos::wasm_bindgen::{JsCast, JsValue};
 use logmancer_core::PageResult;
@@ -58,39 +62,86 @@ pub async fn fetch_filter_page(
     Ok(result)
 }
 
-pub async fn open_server_file(path: String) -> Result<String, String> {
+pub async fn fetch_server_browser_status() -> Result<ServerBrowserStatusResponse, String> {
     let base = window()
         .location()
         .origin()
         .map_err(|_| "Could not detect application origin.".to_string())?;
-    let url = format!("{base}/api/open-server-file");
+    let url = format!("{base}/api/server-browser/status");
+
+    let response = reqwest::Client::new()
+        .get(url)
+        .send()
+        .await
+        .map_err(|_| "Could not connect to the server.".to_string())?;
+
+    if response.status().is_success() {
+        response
+            .json::<ServerBrowserStatusResponse>()
+            .await
+            .map_err(|_| "Could not parse server browser status.".to_string())
+    } else {
+        Err(parse_api_error_message(response, "Could not fetch server browser status.").await)
+    }
+}
+
+pub async fn fetch_server_browser_list(path: String) -> Result<ServerBrowserListResponse, String> {
+    let base = window()
+        .location()
+        .origin()
+        .map_err(|_| "Could not detect application origin.".to_string())?;
+    let url = format!("{base}/api/server-browser/list");
 
     let response = reqwest::Client::new()
         .post(url)
-        .json(&crate::api::commons::OpenServerFileRequest { path })
+        .json(&ServerBrowserListRequest { path })
+        .send()
+        .await
+        .map_err(|_| "Could not connect to the server.".to_string())?;
+
+    if response.status().is_success() {
+        response
+            .json::<ServerBrowserListResponse>()
+            .await
+            .map_err(|_| "Could not parse server browser listing.".to_string())
+    } else {
+        Err(parse_api_error_message(response, "Could not list directory.").await)
+    }
+}
+
+pub async fn open_server_browser_file(path: String) -> Result<String, String> {
+    let base = window()
+        .location()
+        .origin()
+        .map_err(|_| "Could not detect application origin.".to_string())?;
+    let url = format!("{base}/api/server-browser/open");
+
+    let response = reqwest::Client::new()
+        .post(url)
+        .json(&ServerBrowserOpenRequest { path })
         .send()
         .await
         .map_err(|_| "Could not connect to the server.".to_string())?;
 
     if response.status().is_success() {
         let payload = response
-            .json::<crate::api::commons::OpenServerFileResponse>()
+            .json::<OpenServerFileResponse>()
             .await
             .map_err(|_| "Could not parse server response.".to_string())?;
         Ok(payload.file_id)
     } else {
-        response
-            .json::<String>()
-            .await
-            .map_err(|_| "Could not open the requested file.".to_string())
-            .and_then(|message| {
-                if message.trim().is_empty() {
-                    Err("Could not open the requested file.".to_string())
-                } else {
-                    Err(message)
-                }
-            })
+        Err(parse_api_error_message(response, "Could not open the requested server file.").await)
     }
+}
+
+async fn parse_api_error_message(response: reqwest::Response, fallback: &str) -> String {
+    if let Ok(payload) = response.json::<ApiError>().await {
+        if !payload.message.trim().is_empty() {
+            return payload.message;
+        }
+    }
+
+    fallback.to_string()
 }
 
 pub async fn upload_local_file(file: web_sys::File) -> Result<String, String> {
@@ -141,5 +192,42 @@ pub async fn upload_local_file(file: web_sys::File) -> Result<String, String> {
         } else {
             Err(message)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ApiError;
+
+    #[test]
+    fn api_error_prefers_non_empty_message() {
+        let payload = ApiError {
+            code: "invalid_path".to_string(),
+            message: "Invalid path token.".to_string(),
+        };
+
+        let message = if payload.message.trim().is_empty() {
+            "fallback".to_string()
+        } else {
+            payload.message
+        };
+
+        assert_eq!(message, "Invalid path token.");
+    }
+
+    #[test]
+    fn api_error_uses_fallback_for_blank_message() {
+        let payload = ApiError {
+            code: "open_failed".to_string(),
+            message: " ".to_string(),
+        };
+
+        let message = if payload.message.trim().is_empty() {
+            "fallback".to_string()
+        } else {
+            payload.message
+        };
+
+        assert_eq!(message, "fallback");
     }
 }

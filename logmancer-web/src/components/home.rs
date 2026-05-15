@@ -1,4 +1,5 @@
-use crate::components::async_functions::{open_server_file, upload_local_file};
+use crate::components::async_functions::{fetch_server_browser_status, upload_local_file};
+use crate::components::ServerFileSpotlight;
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::*;
@@ -9,14 +10,34 @@ use web_sys::{DragEvent, Event, File, HtmlInputElement};
 
 #[component]
 pub fn Home() -> impl IntoView {
-    let (server_path, set_server_path) = signal(String::new());
-    let (open_error, set_open_error) = signal(String::new());
     let (upload_error, set_upload_error) = signal(String::new());
-    let (is_loading_server, set_is_loading_server) = signal(false);
     let (is_uploading, set_is_uploading) = signal(false);
     let (is_dragging, set_is_dragging) = signal(false);
+    let (is_spotlight_open, set_is_spotlight_open) = signal(false);
+    let (is_server_browser_enabled, set_is_server_browser_enabled) = signal(false);
+    let (server_browser_message, set_server_browser_message) =
+        signal("Checking server browser availability...".to_string());
+    let (is_loading_server_browser_status, set_is_loading_server_browser_status) = signal(true);
     let navigate = use_navigate();
     let navigate_for_upload = navigate.clone();
+
+    Effect::new(move |_| {
+        spawn_local(async move {
+            match fetch_server_browser_status().await {
+                Ok(status) => {
+                    set_is_server_browser_enabled.set(status.enabled);
+                    set_server_browser_message.set(status.message.unwrap_or_else(|| {
+                        "Browse and open files inside the configured server root.".to_string()
+                    }));
+                }
+                Err(error) => {
+                    set_is_server_browser_enabled.set(false);
+                    set_server_browser_message.set(error);
+                }
+            }
+            set_is_loading_server_browser_status.set(false);
+        });
+    });
 
     let upload_file = Callback::new(move |file: File| {
         set_upload_error.set(String::new());
@@ -37,32 +58,6 @@ pub fn Home() -> impl IntoView {
             set_is_uploading.set(false);
         });
     });
-
-    let on_submit = move |ev: web_sys::SubmitEvent| {
-        ev.prevent_default();
-        let path_value = server_path.get();
-        let trimmed_path = path_value.trim().to_string();
-        if trimmed_path.is_empty() {
-            set_open_error.set("Please enter a valid path.".to_string());
-            return;
-        }
-
-        set_open_error.set(String::new());
-        set_is_loading_server.set(true);
-        let navigate = navigate.clone();
-        spawn_local(async move {
-            match open_server_file(trimmed_path).await {
-                Ok(file_id) => {
-                    navigate(&format!("/log/{file_id}"), Default::default());
-                }
-                Err(err) => {
-                    log!("Error opening server file: {}", err);
-                    set_open_error.set(err);
-                }
-            }
-            set_is_loading_server.set(false);
-        });
-    };
 
     let on_file_change = move |ev: Event| {
         if is_uploading.get_untracked() {
@@ -110,7 +105,7 @@ pub fn Home() -> impl IntoView {
         <main class="home-landing">
             <section class="home-card">
                 <h1>"Logmancer"</h1>
-                <p class="home-subtitle">"Explorá logs grandes desde el navegador, sin vueltas."</p>
+                <p class="home-subtitle">"Explore large logs from your browser without the friction."</p>
 
                 <div
                     class=move || {
@@ -124,8 +119,8 @@ pub fn Home() -> impl IntoView {
                     on:dragleave=on_drag_leave
                     on:drop=on_drop
                 >
-                    <p class="home-dropzone-title">"Arrastrá y soltá un archivo local"</p>
-                    <p class="home-dropzone-subtitle">"o elegilo manualmente para subirlo"</p>
+                    <p class="home-dropzone-title">"Drag and drop a local file"</p>
+                    <p class="home-dropzone-subtitle">"or choose one manually to upload it"</p>
 
                     <input
                         id="home-local-file-input"
@@ -144,7 +139,7 @@ pub fn Home() -> impl IntoView {
                             }
                         }
                     >
-                        {move || if is_uploading.get() { "Subiendo..." } else { "Elegir archivo local" }}
+                        {move || if is_uploading.get() { "Uploading..." } else { "Choose local file" }}
                     </label>
                 </div>
 
@@ -153,24 +148,30 @@ pub fn Home() -> impl IntoView {
                 </Show>
 
                 <div class="home-divider">
-                    <span>"o abrir desde el servidor"</span>
+                    <span>"or open from the server"</span>
                 </div>
 
-                <form class="home-server-form" on:submit=on_submit>
-                    <input
-                        type="text"
-                        placeholder="Ruta en el servidor"
-                        bind:value=(server_path, set_server_path)
-                    />
-                    <button type="submit" disabled=move || is_loading_server.get()>
-                        {move || if is_loading_server.get() { "Abriendo..." } else { "Abrir archivo" }}
+                <div class="home-server-form">
+                    <button
+                        type="button"
+                        disabled=move || {
+                            is_loading_server_browser_status.get() || !is_server_browser_enabled.get()
+                        }
+                        on:click=move |_| set_is_spotlight_open.set(true)
+                    >
+                        {move || {
+                            if is_loading_server_browser_status.get() {
+                                "Checking..."
+                            } else {
+                                "Explore Server"
+                            }
+                        }}
                     </button>
-                </form>
-
-                <Show when=move || !open_error.get().is_empty()>
-                    <p class="home-error">{move || open_error.get()}</p>
-                </Show>
+                    <p class="home-server-help">{move || server_browser_message.get()}</p>
+                </div>
             </section>
+
+            <ServerFileSpotlight is_open=is_spotlight_open set_is_open=set_is_spotlight_open />
         </main>
     }
 }
