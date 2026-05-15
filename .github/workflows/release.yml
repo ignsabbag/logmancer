@@ -14,7 +14,7 @@ env:
 
 jobs:
   package:
-    name: Package release for ${{ matrix.package_suffix }}
+    name: Package release for ${{ matrix.package_name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -22,10 +22,10 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            package_suffix: x86_64-unknown-linux-gnu
+            package_name: linux
           - os: windows-2025-vs2026
             target: x86_64-pc-windows-msvc
-            package_suffix: x86_64-pc-windows-msvc-windows-2025-vs2026
+            package_name: windows
 
     steps:
       - uses: actions/checkout@v6
@@ -68,7 +68,7 @@ jobs:
         continue-on-error: true
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: release-${{ runner.os }}-${{ matrix.package_suffix }}
+          shared-key: release-${{ runner.os }}-${{ matrix.package_name }}
 
       - name: Install cargo-leptos
         run: cargo install cargo-leptos --locked
@@ -87,8 +87,8 @@ jobs:
         run: |
           set -euo pipefail
           target_dir="target/${{ matrix.target }}/release"
-          package_root="dist/logmancer-${{ matrix.package_suffix }}"
-          archive_name="logmancer-${LOGMANCER_VERSION}-${{ matrix.package_suffix }}-portable.zip"
+          package_root="dist/logmancer-${{ matrix.package_name }}"
+          archive_name="logmancer-${LOGMANCER_VERSION}-${{ matrix.package_name }}-portable.zip"
 
           mkdir -p "$package_root"
           cp "$target_dir/logmancer-web" "$package_root/"
@@ -100,15 +100,15 @@ jobs:
           cp packaging/portable/linux/run-desktop.sh "$package_root/"
 
           chmod +x "$package_root/run-web.sh" "$package_root/run-desktop.sh"
-          (cd "dist" && zip -r "$archive_name" "logmancer-${{ matrix.package_suffix }}")
+          (cd "$package_root" && zip -r "../$archive_name" .)
 
       - name: Package Windows portable zip
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $targetDir = "target/${{ matrix.target }}/release"
-          $packageRoot = "dist/logmancer-${{ matrix.package_suffix }}"
-          $archiveName = "logmancer-${env:LOGMANCER_VERSION}-${{ matrix.package_suffix }}-portable.zip"
+          $packageRoot = "dist/logmancer-${{ matrix.package_name }}"
+          $archiveName = "logmancer-${env:LOGMANCER_VERSION}-${{ matrix.package_name }}-portable.zip"
 
           New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
           Copy-Item "$targetDir/logmancer-web.exe" "$packageRoot/"
@@ -119,13 +119,13 @@ jobs:
           Copy-Item "packaging/portable/windows/run-web.cmd" "$packageRoot/"
           Copy-Item "packaging/portable/windows/run-desktop.cmd" "$packageRoot/"
 
-          Compress-Archive -Path $packageRoot -DestinationPath "dist/$archiveName" -Force
+          Compress-Archive -Path "$packageRoot/*" -DestinationPath "dist/$archiveName" -Force
 
       - name: Upload portable zip artifact
         uses: actions/upload-artifact@v7
         with:
-          name: logmancer-portable-${{ matrix.package_suffix }}
-          path: dist/logmancer-*-${{ matrix.package_suffix }}-portable.zip
+          name: logmancer-portable-${{ matrix.package_name }}
+          path: dist/logmancer-*-${{ matrix.package_name }}-portable.zip
           if-no-files-found: error
 
   publish:
