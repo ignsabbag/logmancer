@@ -147,7 +147,7 @@ body {
 
 .server-spotlight {
   width: min(760px, 96vw);
-  max-height: 74vh;
+  height: min(760px, 82vh);
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -214,6 +214,8 @@ body {
   }
 
   code {
+    flex: 1;
+    min-width: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     background: #fff;
     border: 1px solid #dbe2ef;
@@ -242,11 +244,12 @@ body {
 }
 
 .server-spotlight-results {
+  flex: 1;
   margin: 0 14px 12px;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   min-height: 220px;
-  max-height: 46vh;
+  max-height: none;
   overflow-y: auto;
   background: #fff;
   display: flex;
@@ -257,6 +260,18 @@ body {
     color: #64748b;
     font-size: 0.88rem;
   }
+}
+
+.server-spotlight-error {
+  margin: 0 14px 12px;
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  padding: 10px 12px;
+  flex-shrink: 0;
 }
 
 .server-spotlight-entry {

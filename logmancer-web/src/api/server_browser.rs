@@ -201,6 +201,7 @@ fn list_directory(root: &ServerFileRoot, dir_path: &Path) -> Result<ServerBrowse
     Ok(ServerBrowserListResponse {
         can_go_up: !current.is_empty(),
         current_path: current,
+        current_display_path: dir_path.to_string_lossy().to_string(),
         entries,
     })
 }
@@ -349,6 +350,10 @@ mod tests {
         let response = list_directory(&root, &root.canonical_path.join("child")).unwrap();
         assert!(response.can_go_up);
         assert_eq!(response.current_path, "child");
+        assert_eq!(
+            response.current_display_path,
+            file_path.parent().unwrap().to_string_lossy()
+        );
         assert_eq!(response.entries.len(), 1);
         assert_eq!(response.entries[0].entry_type, "file");
         assert_eq!(response.entries[0].size, Some(3));

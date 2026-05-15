@@ -16,7 +16,7 @@ pub fn Home() -> impl IntoView {
     let (is_spotlight_open, set_is_spotlight_open) = signal(false);
     let (is_server_browser_enabled, set_is_server_browser_enabled) = signal(false);
     let (server_browser_message, set_server_browser_message) =
-        signal("Verificando disponibilidad del servidor...".to_string());
+        signal("Checking server browser availability...".to_string());
     let (is_loading_server_browser_status, set_is_loading_server_browser_status) = signal(true);
     let navigate = use_navigate();
     let navigate_for_upload = navigate.clone();
@@ -27,7 +27,7 @@ pub fn Home() -> impl IntoView {
                 Ok(status) => {
                     set_is_server_browser_enabled.set(status.enabled);
                     set_server_browser_message.set(status.message.unwrap_or_else(|| {
-                        "Explorá y abrí archivos dentro del directorio configurado.".to_string()
+                        "Browse and open files inside the configured server root.".to_string()
                     }));
                 }
                 Err(error) => {
@@ -105,7 +105,7 @@ pub fn Home() -> impl IntoView {
         <main class="home-landing">
             <section class="home-card">
                 <h1>"Logmancer"</h1>
-                <p class="home-subtitle">"Explorá logs grandes desde el navegador, sin vueltas."</p>
+                <p class="home-subtitle">"Explore large logs from your browser without the friction."</p>
 
                 <div
                     class=move || {
@@ -119,8 +119,8 @@ pub fn Home() -> impl IntoView {
                     on:dragleave=on_drag_leave
                     on:drop=on_drop
                 >
-                    <p class="home-dropzone-title">"Arrastrá y soltá un archivo local"</p>
-                    <p class="home-dropzone-subtitle">"o elegilo manualmente para subirlo"</p>
+                    <p class="home-dropzone-title">"Drag and drop a local file"</p>
+                    <p class="home-dropzone-subtitle">"or choose one manually to upload it"</p>
 
                     <input
                         id="home-local-file-input"
@@ -139,7 +139,7 @@ pub fn Home() -> impl IntoView {
                             }
                         }
                     >
-                        {move || if is_uploading.get() { "Subiendo..." } else { "Elegir archivo local" }}
+                        {move || if is_uploading.get() { "Uploading..." } else { "Choose local file" }}
                     </label>
                 </div>
 
@@ -148,7 +148,7 @@ pub fn Home() -> impl IntoView {
                 </Show>
 
                 <div class="home-divider">
-                    <span>"o abrir desde el servidor"</span>
+                    <span>"or open from the server"</span>
                 </div>
 
                 <div class="home-server-form">
@@ -161,9 +161,9 @@ pub fn Home() -> impl IntoView {
                     >
                         {move || {
                             if is_loading_server_browser_status.get() {
-                                "Verificando..."
+                                "Checking..."
                             } else {
-                                "Explorar servidor"
+                                "Explore Server"
                             }
                         }}
                     </button>

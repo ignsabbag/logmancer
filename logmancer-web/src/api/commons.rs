@@ -30,6 +30,7 @@ pub struct ServerBrowserListRequest {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ServerBrowserListResponse {
     pub current_path: String,
+    pub current_display_path: String,
     pub can_go_up: bool,
     pub entries: Vec<ServerBrowserEntry>,
 }

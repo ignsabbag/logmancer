@@ -1,9 +1,12 @@
 use crate::api::commons::ServerBrowserEntry;
 use crate::components::async_functions::{fetch_server_browser_list, open_server_browser_file};
+use leptos::html;
 use leptos::logging::log;
 use leptos::prelude::*;
+use leptos::wasm_bindgen::JsCast;
 use leptos_router::hooks::use_navigate;
 use wasm_bindgen_futures::spawn_local;
+use web_sys::HtmlElement;
 
 #[component]
 pub fn ServerFileSpotlight(
@@ -13,24 +16,48 @@ pub fn ServerFileSpotlight(
     let (is_loading, set_is_loading) = signal(false);
     let (entries, set_entries) = signal(Vec::<ServerBrowserEntry>::new());
     let (current_path, set_current_path) = signal(String::new());
+    let (current_display_path, set_current_display_path) = signal(String::new());
     let (can_go_up, set_can_go_up) = signal(false);
     let (filter, set_filter) = signal(String::new());
     let (selected_path, set_selected_path) = signal(None::<String>);
     let (selected_is_file, set_selected_is_file) = signal(false);
     let (error_message, set_error_message) = signal(String::new());
     let navigate = use_navigate();
+    let spotlight_ref: NodeRef<html::Section> = NodeRef::new();
+    let filter_input_ref: NodeRef<html::Input> = NodeRef::new();
+
+    let focus_filter = move || {
+        if let Some(input) = filter_input_ref.get() {
+            let _ = input.focus();
+        }
+    };
+
+    let focus_first_entry = move || {
+        let Some(spotlight) = spotlight_ref.get() else {
+            return;
+        };
+        let Ok(Some(element)) = spotlight.query_selector(".server-spotlight-entry") else {
+            return;
+        };
+        if let Ok(element) = element.dyn_into::<HtmlElement>() {
+            let _ = element.focus();
+        }
+    };
 
     let load_directory = Callback::new(move |path: String| {
         set_error_message.set(String::new());
         set_is_loading.set(true);
+        set_filter.set(String::new());
         set_selected_path.set(None);
         set_selected_is_file.set(false);
+        focus_filter();
         let navigate_path = path.clone();
         spawn_local(async move {
             match fetch_server_browser_list(navigate_path).await {
                 Ok(response) => {
                     set_entries.set(response.entries);
                     set_current_path.set(response.current_path);
+                    set_current_display_path.set(response.current_display_path);
                     set_can_go_up.set(response.can_go_up);
                 }
                 Err(error) => {
@@ -52,17 +79,7 @@ pub fn ServerFileSpotlight(
         }
     });
 
-    let open_selected = Callback::new(move |_| {
-        let Some(path) = selected_path.get() else {
-            set_error_message.set("Seleccioná un archivo primero.".to_string());
-            return;
-        };
-
-        if !selected_is_file.get() {
-            set_error_message.set("Solo podés abrir archivos.".to_string());
-            return;
-        }
-
+    let open_file = Callback::new(move |path: String| {
         set_error_message.set(String::new());
         let navigate = navigate.clone();
         spawn_local(async move {
@@ -79,6 +96,20 @@ pub fn ServerFileSpotlight(
         });
     });
 
+    let open_selected = Callback::new(move |_| {
+        let Some(path) = selected_path.get() else {
+            set_error_message.set("Select a file first.".to_string());
+            return;
+        };
+
+        if !selected_is_file.get() {
+            set_error_message.set("Only files can be opened.".to_string());
+            return;
+        }
+
+        open_file.run(path);
+    });
+
     let go_up = move |_| {
         if !can_go_up.get() {
             return;
@@ -91,45 +122,49 @@ pub fn ServerFileSpotlight(
     };
 
     let filtered_entries = Memo::new(move |_| filter_entries(&entries.get(), &filter.get()));
+    let move_focus_from_filter = move |ev: leptos::ev::KeyboardEvent| {
+        if !matches!(ev.key().as_str(), "ArrowDown" | "Enter") {
+            return;
+        }
+        let entries = filtered_entries.get();
+        let Some((path, is_file)) = first_focus_target(&entries) else {
+            return;
+        };
+        ev.prevent_default();
+        set_selected_path.set(Some(path));
+        set_selected_is_file.set(is_file);
+        focus_first_entry();
+    };
 
     view! {
         <Show when=move || is_open.get()>
             <div class="server-spotlight-backdrop" on:click=close_modal>
-                <section class="server-spotlight" on:click=move |ev| ev.stop_propagation()>
+                <section node_ref=spotlight_ref class="server-spotlight" on:click=move |ev| ev.stop_propagation()>
                     <header class="server-spotlight-header">
-                        <h2>"Explorar servidor"</h2>
+                        <h2>"Explore Server"</h2>
                         <button type="button" on:click=close_modal>
-                            "Cerrar"
+                            "Close"
                         </button>
                     </header>
 
                     <div class="server-spotlight-controls">
                         <button type="button" disabled=move || !can_go_up.get() on:click=go_up>
-                            "Subir"
+                            "Up"
                         </button>
-                        <code>{move || {
-                            let path = current_path.get();
-                            if path.is_empty() {
-                                "/".to_string()
-                            } else {
-                                format!("/{path}")
-                            }
-                        }}</code>
+                        <code>{move || current_display_path.get()}</code>
                     </div>
 
                     <input
+                        node_ref=filter_input_ref
                         type="text"
-                        placeholder="Filtrar entradas del directorio actual"
+                        placeholder="Filter current folder entries"
                         bind:value=(filter, set_filter)
+                        on:keydown=move_focus_from_filter
                     />
 
-                    <div class="server-spotlight-results" on:keydown=move |ev: leptos::ev::KeyboardEvent| {
-                        if ev.key() == "Enter" {
-                            open_selected.run(());
-                        }
-                    }>
+                    <div class="server-spotlight-results">
                         <Show when=move || is_loading.get()>
-                            <p>"Cargando..."</p>
+                            <p>"Loading..."</p>
                         </Show>
 
                         <For
@@ -147,6 +182,8 @@ pub fn ServerFileSpotlight(
                                 let click_type = row_type.clone();
                                 let dblclick_path = row_path.clone();
                                 let dblclick_type = row_type.clone();
+                                let key_path = row_path.clone();
+                                let key_type = row_type.clone();
 
                                 view! {
                             <button
@@ -172,9 +209,24 @@ pub fn ServerFileSpotlight(
                                         set_selected_path.set(Some(dblclick_path.clone()));
                                         set_selected_is_file.set(dblclick_type == "file");
                                         if dblclick_type == "file" {
-                                            open_selected.run(());
+                                            open_file.run(dblclick_path.clone());
                                         } else {
                                             load_directory.run(dblclick_path.clone());
+                                        }
+                                    }
+                                }
+                                on:keydown={
+                                    move |ev: leptos::ev::KeyboardEvent| {
+                                        if ev.key() != "Enter" {
+                                            return;
+                                        }
+                                        ev.prevent_default();
+                                        set_selected_path.set(Some(key_path.clone()));
+                                        set_selected_is_file.set(key_type == "file");
+                                        if key_type == "file" {
+                                            open_file.run(key_path.clone());
+                                        } else {
+                                            load_directory.run(key_path.clone());
                                         }
                                     }
                                 }
@@ -188,7 +240,7 @@ pub fn ServerFileSpotlight(
                     </div>
 
                     <Show when=move || !error_message.get().is_empty()>
-                        <p class="home-error">{move || error_message.get()}</p>
+                        <p class="server-spotlight-error">{move || error_message.get()}</p>
                     </Show>
 
                     <footer class="server-spotlight-footer">
@@ -197,7 +249,7 @@ pub fn ServerFileSpotlight(
                             disabled=move || !selected_is_file.get()
                             on:click=move |_| open_selected.run(())
                         >
-                            "Abrir seleccionado"
+                            "Open Selected"
                         </button>
                     </footer>
                 </section>
@@ -233,9 +285,15 @@ pub(crate) fn parent_path(path: &str) -> String {
     parts.join("/")
 }
 
+pub(crate) fn first_focus_target(entries: &[ServerBrowserEntry]) -> Option<(String, bool)> {
+    entries
+        .first()
+        .map(|entry| (entry.path.clone(), entry.entry_type == "file"))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{filter_entries, parent_path};
+    use super::{filter_entries, first_focus_target, parent_path};
     use crate::api::commons::ServerBrowserEntry;
 
     fn mk_entry(name: &str, path: &str, entry_type: &str) -> ServerBrowserEntry {
@@ -282,5 +340,19 @@ mod tests {
         assert_eq!(parent_path(""), "");
         assert_eq!(parent_path("service"), "");
         assert_eq!(parent_path("service/api"), "service");
+    }
+
+    #[test]
+    fn first_focus_target_selects_first_entry_with_file_flag() {
+        let entries = vec![
+            mk_entry("app.log", "logs/app.log", "file"),
+            mk_entry("archive", "logs/archive", "directory"),
+        ];
+
+        assert_eq!(
+            first_focus_target(&entries),
+            Some(("logs/app.log".to_string(), true))
+        );
+        assert_eq!(first_focus_target(&[]), None);
     }
 }
