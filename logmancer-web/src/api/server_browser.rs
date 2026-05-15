@@ -7,6 +7,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -259,18 +260,21 @@ fn resolve_root_bound_path(
 }
 
 fn is_text_readable(path: &Path) -> bool {
-    let bytes = match std::fs::read(path) {
-        Ok(bytes) => bytes,
+    let mut file = match std::fs::File::open(path) {
+        Ok(file) => file,
         Err(_) => return false,
     };
 
-    let probe_len = bytes.len().min(8192);
-    let probe = &bytes[..probe_len];
+    let mut probe = Vec::with_capacity(8192);
+    if file.by_ref().take(8192).read_to_end(&mut probe).is_err() {
+        return false;
+    }
+
     if probe.contains(&0) {
         return false;
     }
 
-    std::str::from_utf8(probe).is_ok()
+    std::str::from_utf8(&probe).is_ok()
 }
 
 fn api_error(status: StatusCode, code: &str, message: &str) -> axum::response::Response {
@@ -374,6 +378,16 @@ mod tests {
         let path = root.canonical_path.join("bad.bin");
         let mut file = std::fs::File::create(&path).unwrap();
         file.write_all(&[0, 159, 146, 150]).unwrap();
+        assert!(!is_text_readable(&path));
+    }
+
+    #[test]
+    fn text_readable_probe_does_not_require_reading_entire_large_file() {
+        let (_dir, root) = mk_root();
+        let path = root.canonical_path.join("large.log");
+        let file = std::fs::File::create(&path).unwrap();
+        file.set_len(16 * 1024 * 1024).unwrap();
+
         assert!(!is_text_readable(&path));
     }
 }

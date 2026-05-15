@@ -24,6 +24,7 @@ Logmancer Web needs a safer way to open server-side log files without requiring 
 | Symlinks | Reject symlinks that resolve outside the configured root. |
 | Search | Filter only the current directory entries; do not add recursive/global search. |
 | File opening | Re-validate the selected file and confirm it is text-readable before opening it. |
+| Path display | The modal may display the current server path as read-only context; requests still use scoped relative tokens. |
 | Errors | Return safe messages that avoid leaking absolute server paths or implementation details. |
 
 ## Consequences

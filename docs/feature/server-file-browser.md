@@ -39,7 +39,7 @@ Server browsing is exposed through `Explore Server` in both states.
 ## Spotlight behavior
 
 - Starts at configured root.
-- Shows current path as read-only.
+- Shows current server path as read-only.
 - Lists only current directory entries.
 - Sorts folders first, then alphabetical.
 - Supports enter folder, go up, single-select file, Enter/double-click/Open Selected.
@@ -51,7 +51,7 @@ Server browsing is exposed through `Explore Server` in both states.
 - All list/open requests are validated against configured root.
 - Traversal (`..`), absolute-path escape, and symlink-outside-root are rejected.
 - Open re-validates path and checks text-readability before opening.
-- Errors are safe (no internal absolute path leakage).
+- Errors are safe and do not include internal absolute paths.
 
 ## Review checklist
 
