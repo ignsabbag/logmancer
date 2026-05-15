@@ -105,6 +105,11 @@ cargo test -- --nocapture
 - Prefer temp files for file operation tests
 - Clean up test files in test body
 
+### Changelog
+- Update `CHANGELOG.md` before committing relevant user-facing, release, packaging, workflow, or behavior changes.
+- Keep changelog entries concise and grouped under `[Unreleased]` during development or the active release section when preparing a tag.
+- If a change is purely internal and not release-note-worthy, leave `CHANGELOG.md` unchanged and call that out in the commit/PR summary.
+
 ---
 
 ## Dependencies
@@ -156,3 +161,4 @@ cargo tauri dev
 ## Project Skills
 
 - `skills/rust-quality-gate/SKILL.md` — OpenCode-compatible skill for commit/PR preparation. It requires `cargo fmt` and `cargo clippy --workspace -- -D warnings` before creating a commit or PR.
+- The Rust quality gate skill also requires an explicit `CHANGELOG.md` decision before committing relevant user-facing, release, packaging, workflow, or behavior changes.
