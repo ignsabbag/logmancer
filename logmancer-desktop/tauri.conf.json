@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tauri-app",
+  "productName": "Logmancer",
   "version": "0.2.0",
-  "identifier": "com.tauri-app.app",
+  "identifier": "com.ignsabbag.logmancer",
   "build": {
     "beforeDevCommand": "cargo leptos watch --project logmancer-web",
     "devUrl": "http://localhost:3000",
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "tauri-app",
+        "title": "Logmancer",
         "width": 800,
         "height": 600
       }
