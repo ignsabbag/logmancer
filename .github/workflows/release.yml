@@ -1,27 +1,20 @@
-name: Build
+name: Release
 
 on:
-  workflow_run:
-    workflows: ["Test"]
-    branches: ["main"]
-    types: [completed]
-
-concurrency:
-  group: build-${{ github.workflow }}-${{ github.event.workflow_run.head_branch }}
-  cancel-in-progress: true
+  push:
+    tags:
+      - "v*"
 
 permissions:
-  contents: read
-  actions: write
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
   LEPTOS_OUTPUT_NAME: logmancer-web
 
 jobs:
-  build:
-    name: Package for ${{ matrix.package_suffix }}
-    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'
+  package:
+    name: Package release for ${{ matrix.package_suffix }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -36,8 +29,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve release version
+        shell: bash
+        run: echo "LOGMANCER_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -73,7 +68,7 @@ jobs:
         continue-on-error: true
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: build-${{ runner.os }}-${{ matrix.package_suffix }}
+          shared-key: release-${{ runner.os }}-${{ matrix.package_suffix }}
 
       - name: Install cargo-leptos
         run: cargo install cargo-leptos --locked
@@ -87,13 +82,13 @@ jobs:
           LEPTOS_SITE_ROOT: target/site
         run: cargo leptos build --release --project logmancer-web
 
-      - name: Package Linux artifacts
+      - name: Package Linux portable zip
         if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           target_dir="target/${{ matrix.target }}/release"
           package_root="dist/logmancer-${{ matrix.package_suffix }}"
-          archive_name="logmancer-main-${{ matrix.package_suffix }}-portable.zip"
+          archive_name="logmancer-${LOGMANCER_VERSION}-${{ matrix.package_suffix }}-portable.zip"
 
           mkdir -p "$package_root"
           cp "$target_dir/logmancer-web" "$package_root/"
@@ -105,16 +100,15 @@ jobs:
           cp packaging/portable/linux/run-desktop.sh "$package_root/"
 
           chmod +x "$package_root/run-web.sh" "$package_root/run-desktop.sh"
-
           (cd "dist" && zip -r "$archive_name" "logmancer-${{ matrix.package_suffix }}")
 
-      - name: Package Windows artifacts
+      - name: Package Windows portable zip
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $targetDir = "target/${{ matrix.target }}/release"
           $packageRoot = "dist/logmancer-${{ matrix.package_suffix }}"
-          $archiveName = "logmancer-main-${{ matrix.package_suffix }}-portable.zip"
+          $archiveName = "logmancer-${env:LOGMANCER_VERSION}-${{ matrix.package_suffix }}-portable.zip"
 
           New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
           Copy-Item "$targetDir/logmancer-web.exe" "$packageRoot/"
@@ -127,46 +121,35 @@ jobs:
 
           Compress-Archive -Path $packageRoot -DestinationPath "dist/$archiveName" -Force
 
-      - name: Upload artifact
+      - name: Upload portable zip artifact
         uses: actions/upload-artifact@v7
         with:
-          name: logmancer-package-${{ matrix.package_suffix }}
-          path: dist/logmancer-main-${{ matrix.package_suffix }}-portable.zip
+          name: logmancer-portable-${{ matrix.package_suffix }}
+          path: dist/logmancer-*-${{ matrix.package_suffix }}-portable.zip
           if-no-files-found: error
 
-  cleanup-artifacts:
-    name: Keep only latest main artifacts
-    needs: build
-    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && success()
+  publish:
+    name: Publish GitHub release
+    needs: package
     runs-on: ubuntu-latest
-
     steps:
-      - name: Delete older main binary artifacts
-        uses: actions/github-script@v8
+      - uses: actions/checkout@v6
+
+      - name: Download portable zips
+        uses: actions/download-artifact@v7
         with:
-          script: |
-            const { owner, repo } = context.repo;
-            const artifacts = await github.paginate(
-              github.rest.actions.listArtifactsForRepo,
-              { owner, repo, per_page: 100 }
-            );
+          pattern: logmancer-portable-*
+          path: dist
+          merge-multiple: true
 
-            const currentRunId = context.runId;
-            const staleArtifacts = artifacts.filter((artifact) => {
-              const isLogmancerBinaryArtifact = artifact.name.startsWith('logmancer-binaries-')
-                || artifact.name.startsWith('logmancer-package-')
-                || artifact.name.startsWith('logmancer-tui-');
-
-              return isLogmancerBinaryArtifact
-                && artifact.workflow_run?.head_branch === 'main'
-                && artifact.workflow_run?.id !== currentRunId;
-            });
-
-            for (const artifact of staleArtifacts) {
-              core.info(`Deleting artifact ${artifact.name} from run ${artifact.workflow_run?.id}`);
-              await github.rest.actions.deleteArtifact({
-                owner,
-                repo,
-                artifact_id: artifact.id,
-              });
-            }
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" dist/*.zip --clobber
+          else
+            gh release create "$TAG_NAME" dist/*.zip --title "$TAG_NAME" --generate-notes
+          fi
