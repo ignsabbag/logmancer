@@ -20,3 +20,5 @@
 
 /tests/output/
 **/examples/**/output/
+
+/.atl/
