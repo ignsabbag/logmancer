@@ -17,7 +17,7 @@ pub fn App() -> impl IntoView {
         <Stylesheet id="leptos" href="/pkg/logmancer-web.css"/>
 
         // sets the document title
-        <Title text="Welcome to Leptos"/>
+        <Title text="Logmancer"/>
 
         // content for this welcome page
         <Router>
