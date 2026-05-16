@@ -12,6 +12,7 @@ pub struct LogFileHandler {
     log_file: Arc<RwLock<LogFile>>,
     reload_sender: Sender<()>,
     filter_sender: Sender<Option<String>>, // New sender for filter thread
+    write_ops: FileWriteOps,
 }
 
 impl LogFileHandler {
@@ -23,6 +24,7 @@ impl LogFileHandler {
 
         let reload_write_ops = FileWriteOps::new(Arc::clone(&log_file));
         let filter_write_ops = FileWriteOps::new(Arc::clone(&log_file));
+        let write_ops = FileWriteOps::new(Arc::clone(&log_file));
 
         spawn_reload_worker(reload_write_ops, reload_receiver, filter_sender.clone());
         spawn_filter_worker(filter_write_ops, filter_receiver);
@@ -33,6 +35,7 @@ impl LogFileHandler {
             log_file,
             reload_sender,
             filter_sender,
+            write_ops,
         })
     }
 
@@ -56,5 +59,21 @@ impl LogFileHandler {
 
     pub fn read_ops(&self) -> FileReadOps<'_> {
         FileReadOps::new(self.log_file.read().unwrap())
+    }
+
+    pub fn apply_search(&mut self, query: String) -> io::Result<()> {
+        self.write_ops.apply_search(query)
+    }
+
+    pub fn clear_search(&mut self) {
+        self.write_ops.clear_search();
+    }
+
+    pub fn search_next(&mut self) {
+        self.write_ops.search_next();
+    }
+
+    pub fn search_previous(&mut self) {
+        self.write_ops.search_previous();
     }
 }

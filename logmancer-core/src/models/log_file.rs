@@ -2,6 +2,8 @@ use memmap2::Mmap;
 use std::fs::File;
 use std::io;
 
+use crate::models::search::SearchState;
+
 /// Holds mmap and index of the file. It's no thread safe.
 pub struct LogFile {
     pub path: String,
@@ -10,6 +12,7 @@ pub struct LogFile {
     pub index: Vec<usize>,
     pub filter: Vec<bool>,
     pub regex: Option<String>,
+    pub search: SearchState,
 }
 
 impl LogFile {
@@ -24,6 +27,7 @@ impl LogFile {
             index,
             filter: Vec::<bool>::new(),
             regex: None,
+            search: SearchState::default(),
         })
     }
 }

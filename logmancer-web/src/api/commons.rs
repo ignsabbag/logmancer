@@ -80,3 +80,21 @@ pub struct ReadFilterRequest {
     pub start_line: usize,
     pub max_lines: usize,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ApplySearchRequest {
+    pub file_id: String,
+    pub query: String,
+    pub max_lines: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SearchNavigateRequest {
+    pub file_id: String,
+    pub max_lines: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SearchStatusRequest {
+    pub file_id: String,
+}

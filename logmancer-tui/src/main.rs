@@ -48,6 +48,8 @@ fn main() -> std::io::Result<()> {
     let mut last_dimensions = (0, 0);
     let mut follow_mode = false;
     let mut end_reached = false;
+    let mut search_input_mode = false;
+    let mut search_query = String::new();
 
     loop {
         let (columns, rows) = terminal::size()?;
@@ -91,11 +93,16 @@ fn main() -> std::io::Result<()> {
             // Header
             print_row!(
                 0,
-                "File: {} | Follow Mode: {} | Total Lines: {}{}",
+                "File: {} | Follow Mode: {} | Total Lines: {}{} | Search: {}",
                 &args[1],
                 if follow_mode { "ON" } else { "OFF" },
                 page_result.total_lines,
-                indexed
+                indexed,
+                if search_query.is_empty() {
+                    "OFF".to_string()
+                } else {
+                    search_query.clone()
+                }
             );
             print_row!(1, "{}", "-".repeat(columns as usize));
 
@@ -109,11 +116,22 @@ fn main() -> std::io::Result<()> {
             for (i, line) in page_result.lines.iter().enumerate() {
                 print_row!(
                     i + 2,
-                    "{:<left_offset$}{} {}",
+                    "{:<left_offset$}{} {}{}",
                     line.number,
                     "|",
-                    trunc_str(line.text.trim_end(), columns as usize - left_offset - 2)
+                    trunc_str(line.text.trim_end(), columns as usize - left_offset - 2),
+                    page_result
+                        .search
+                        .as_ref()
+                        .and_then(|search| search.current.as_ref())
+                        .filter(|current| current.line_index + 1 == line.number)
+                        .map(|_| " <")
+                        .unwrap_or("")
                 );
+            }
+
+            if search_input_mode {
+                print_row!(rows as usize - 1, "/{}", search_query);
             }
 
             last_page_result = Some(page_result);
@@ -131,8 +149,51 @@ fn main() -> std::io::Result<()> {
             Some(event::read()?)
         };
         if let Some(Event::Key(key_event)) = event {
+            if search_input_mode {
+                match key_event.code {
+                    KeyCode::Enter => {
+                        search_input_mode = false;
+                        if search_query.is_empty() {
+                            reader.clear_search();
+                        } else if let Ok(page) =
+                            reader.apply_search(search_query.clone(), page_size)
+                        {
+                            page_first_line = page.start_line;
+                            end_reached = page_first_line + page_size >= page.total_lines;
+                            last_page_result = None;
+                        }
+                    }
+                    KeyCode::Esc => {
+                        search_input_mode = false;
+                    }
+                    KeyCode::Backspace => {
+                        search_query.pop();
+                    }
+                    KeyCode::Char(c) => search_query.push(c),
+                    _ => {}
+                }
+                continue;
+            }
             match key_event.code {
                 KeyCode::Char('q') => break,
+                KeyCode::Char('/') => {
+                    search_input_mode = true;
+                    search_query.clear();
+                }
+                KeyCode::Char('n') => {
+                    if let Ok(page) = reader.search_next(page_size) {
+                        page_first_line = page.start_line;
+                        end_reached = page_first_line + page_size >= page.total_lines;
+                        last_page_result = None;
+                    }
+                }
+                KeyCode::Char('N') => {
+                    if let Ok(page) = reader.search_previous(page_size) {
+                        page_first_line = page.start_line;
+                        end_reached = page_first_line + page_size >= page.total_lines;
+                        last_page_result = None;
+                    }
+                }
                 KeyCode::Char('f') | KeyCode::Char('F') => follow_mode = !follow_mode,
                 KeyCode::Char('g') => {
                     end_reached = false;

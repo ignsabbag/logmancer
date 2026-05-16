@@ -1,4 +1,5 @@
 use crate::models::log_file::LogFile;
+use crate::models::search::{PageSearchResult, SearchMatch, SearchStatus};
 use std::io;
 use std::sync::RwLockReadGuard;
 
@@ -89,6 +90,27 @@ impl<'a> FileReadOps<'a> {
         }
         let indexed = self.log_file.index[self.log_file.filter.len()];
         Ok(indexed as f64 / file_size as f64)
+    }
+
+    pub fn search_status(&self) -> SearchStatus {
+        self.log_file.search.status()
+    }
+
+    pub fn page_search_result(&self, from_line: usize, to_line: usize) -> Option<PageSearchResult> {
+        let session = self.log_file.search.session.as_ref()?;
+        let page_matches = session
+            .matches
+            .iter()
+            .filter(|m| m.line_index >= from_line && m.line_index < to_line)
+            .cloned()
+            .collect::<Vec<SearchMatch>>();
+
+        Some(PageSearchResult {
+            query: session.query.clone(),
+            total_matches: session.matches.len(),
+            current: session.current_match().cloned(),
+            page_matches,
+        })
     }
 }
 

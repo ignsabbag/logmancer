@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::search::PageSearchResult;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct PageLine {
     pub number: usize,
@@ -12,6 +14,7 @@ pub struct PageResult {
     pub start_line: usize,
     pub total_lines: usize,
     pub indexing_progress: f64,
+    pub search: Option<PageSearchResult>,
 }
 
 impl PartialEq for PageResult {

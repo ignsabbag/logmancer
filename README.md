@@ -5,7 +5,7 @@
 
 A lightweight, cross-platform log viewer written in Rust. Designed for efficiency and speed, Logmancer reads directly from disk and handles very large log files with ease.
 
-Current development version: `0.2.0`.
+Current development version: `0.3.0`.
 
 ---
 
@@ -38,7 +38,7 @@ Current development version: `0.2.0`.
 
 *Note: The project is in its early stages of development.*
 
-Planned features include search, visual rules, multi-file workspace improvements, and structured log parsing. See [ROADMAP.md](ROADMAP.md) for details.
+Planned features include visual rules, multi-file workspace improvements, and structured log parsing. See [ROADMAP.md](ROADMAP.md) for details.
 
 ---
 

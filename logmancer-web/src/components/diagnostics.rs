@@ -1,4 +1,4 @@
-#[cfg(any(target_arch = "wasm32", test))]
+#[cfg(target_arch = "wasm32")]
 const SCROLL_TRACE_FLAGS: &[&str] = &["scroll_trace", "scrollTrace", "debug_scroll"];
 #[cfg(any(target_arch = "wasm32", test))]
 const ENABLED_VALUES: &[&str] = &["", "1", "true", "yes", "on"];

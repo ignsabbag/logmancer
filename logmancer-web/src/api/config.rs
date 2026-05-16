@@ -1,6 +1,7 @@
 use crate::api::file_info::file_info;
 use crate::api::filter::{apply_filter, read_filter_page};
 use crate::api::read_page::{read_page, tail};
+use crate::api::search::{apply_search, clear_search, search_next, search_previous, search_status};
 use crate::api::server_browser::{
     server_browser_list, server_browser_open, server_browser_status, ServerFileRoot,
 };
@@ -32,6 +33,11 @@ pub fn api_routes_with_registry<T>(registry: Arc<LogRegistry>) -> Router<T> {
         .route("/tail", get(tail))
         .route("/apply-filter", post(apply_filter))
         .route("/read-filter-page", get(read_filter_page))
+        .route("/apply-search", post(apply_search))
+        .route("/clear-search", get(clear_search))
+        .route("/search-status", get(search_status))
+        .route("/search-next", get(search_next))
+        .route("/search-previous", get(search_previous))
         .layer(DefaultBodyLimit::max(LOG_UPLOAD_BODY_LIMIT_BYTES))
         .with_state(AppState {
             registry,

@@ -17,3 +17,6 @@ pub mod upload_file;
 
 #[cfg(feature = "ssr")]
 pub mod server_browser;
+
+#[cfg(feature = "ssr")]
+pub mod search;

@@ -1,4 +1,5 @@
 use crate::models::log_file::LogFile;
+use crate::models::search::{SearchMatch, SearchSession};
 use memmap2::Mmap;
 use regex::Regex;
 use std::cmp::min;
@@ -97,5 +98,51 @@ impl FileWriteOps {
         }
 
         Ok(end_line == total_lines - 1)
+    }
+
+    pub fn apply_search(&mut self, query: String) -> io::Result<()> {
+        let re = Regex::new(&query).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let mut file_lock = self.log_file.write().unwrap();
+        let mut matches = Vec::new();
+        let mut ordinal = 0usize;
+
+        for i in 0..file_lock.index.len().saturating_sub(1) {
+            let start_pos = file_lock.index[i];
+            let end_pos = file_lock.index[i + 1];
+            let line = &file_lock.mmap[start_pos..end_pos];
+            if let Ok(text) = std::str::from_utf8(line) {
+                for found in re.find_iter(text) {
+                    matches.push(SearchMatch {
+                        line_index: i,
+                        start: found.start(),
+                        end: found.end(),
+                        ordinal,
+                    });
+                    ordinal += 1;
+                }
+            }
+        }
+
+        file_lock.search.session = Some(SearchSession::new(query, matches));
+        Ok(())
+    }
+
+    pub fn clear_search(&mut self) {
+        let mut file_lock = self.log_file.write().unwrap();
+        file_lock.search.clear();
+    }
+
+    pub fn search_next(&mut self) {
+        let mut file_lock = self.log_file.write().unwrap();
+        if let Some(session) = file_lock.search.session.as_mut() {
+            session.next();
+        }
+    }
+
+    pub fn search_previous(&mut self) {
+        let mut file_lock = self.log_file.write().unwrap();
+        if let Some(session) = file_lock.search.session.as_mut() {
+            session.previous();
+        }
     }
 }
