@@ -14,7 +14,7 @@ Logmancer search is a **core-owned capability** shared by Web, Desktop, and TUI:
 
 | Action | Expected result |
 |---|---|
-| Start a search | Core records the active query and exposes search status/metadata. |
+| Start a search | Core records the active query and begins searching from the current position. |
 | Read or scroll a page | The page response includes visible match spans when search is active. |
 | Press next | Core moves to the next match and returns a page positioned around it. |
 | Press previous | Core moves to the previous match and returns a page positioned around it. |
@@ -67,15 +67,48 @@ This keeps UI rendering flexible while preventing each client from inventing dif
 
 Search must remain responsive on large log files.
 
-The target architecture is asynchronous search indexing:
+The target architecture is asynchronous, position-aware search indexing:
 
 - starting a search should return quickly,
-- a search worker indexes matches in batches,
+- a search worker indexes matches in batches from the current position,
+- after reaching the end of the indexed log, the worker wraps to the beginning and continues until it reaches the original start position,
 - write locks should be held only while merging batch results,
 - stale search batches should not update state after a newer query starts,
 - `total_matches` may be partial while indexing is still in progress.
 
 This mirrors the existing worker-based indexing/filtering model and avoids blocking UI/API calls while scanning large files.
+
+## Search startup flow
+
+Starting a search has two goals: return quickly and find the first useful result near the user.
+
+```text
+current page ── apply search ── enqueue worker from current line
+      │                              │
+      │                              ├─ scan current line → end
+      │                              └─ wrap start → original line
+      └─ bounded initial wait (<=500ms) then return PageResult
+```
+
+The client should not assume the first response contains a completed result set. Instead:
+
+1. trigger search from the current page/line,
+2. show a searching indicator while status is indexing,
+3. poll search status or page data using the existing polling style,
+4. jump to the first discovered match once core exposes it,
+5. keep polling until the search status is ready.
+
+## Partial results contract
+
+While the search worker is indexing:
+
+- visible page matches may be available before the global search is complete,
+- `total_matches` is known-so-far, not final,
+- the UI should avoid presenting final “N of M” semantics until status is ready,
+- `current_match` may appear as soon as the first occurrence is discovered,
+- a newer query invalidates older worker batches through a generation/id guard.
+
+The worker may discover matches in circular scan order for responsiveness, but stable match identity remains based on global log position: line index, intra-line span, and ordinal.
 
 ## Review checklist
 
@@ -87,3 +120,6 @@ This mirrors the existing worker-based indexing/filtering model and avoids block
 - [ ] Scroll position does not change the selected current match.
 - [ ] Web/Desktop and TUI only render core-provided search metadata.
 - [ ] Large-file search work is batchable and does not require one long synchronous scan.
+- [ ] Search indexing starts from the current position and wraps to the beginning after EOF.
+- [ ] Clients show an indexing/searching state and poll until the first/current match is available.
+- [ ] Partial totals are not presented as final totals while indexing is still running.

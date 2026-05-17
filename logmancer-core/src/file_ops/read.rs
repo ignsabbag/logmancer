@@ -1,5 +1,6 @@
 use crate::models::log_file::LogFile;
 use crate::models::search::{PageSearchResult, SearchMatch, SearchStatus};
+use regex::Regex;
 use std::io;
 use std::sync::RwLockReadGuard;
 
@@ -108,15 +109,45 @@ impl<'a> FileReadOps<'a> {
         Some(PageSearchResult {
             query: session.query.clone(),
             total_matches: session.matches.len(),
+            total_matches_final: session.total_matches_final,
+            is_indexing: !matches!(session.phase, crate::models::search::SearchPhase::Ready),
+            first: session.first_match.clone(),
             current: session.current_match().cloned(),
             page_matches,
         })
+    }
+
+    pub fn compute_search_batch(
+        log_file: &LogFile,
+        query: &str,
+        start_line: usize,
+        end_line: usize,
+    ) -> io::Result<Vec<SearchMatch>> {
+        let re = Regex::new(query).map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+        let mut batch = Vec::new();
+        for i in start_line..end_line {
+            let start_pos = log_file.index[i];
+            let end_pos = log_file.index[i + 1];
+            let line = &log_file.mmap[start_pos..end_pos];
+            if let Ok(text) = std::str::from_utf8(line) {
+                for found in re.find_iter(text) {
+                    batch.push(SearchMatch {
+                        line_index: i,
+                        start: found.start(),
+                        end: found.end(),
+                        ordinal: 0,
+                    });
+                }
+            }
+        }
+        Ok(batch)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::file_ops::write::FileWriteOps;
     use crate::models::log_file::LogFile;
     use std::fs::File;
     use std::io::Write;
@@ -134,6 +165,30 @@ mod tests {
         let read_ops = FileReadOps::new(lock.read().unwrap());
 
         assert_eq!(read_ops.read_line(0).unwrap(), "line1");
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn compute_search_batch_collects_multiple_matches_per_line() {
+        let path = "test_log_search_batch.txt";
+        let mut file = File::create(path).unwrap();
+        writeln!(file, "foo foo").unwrap();
+        writeln!(file, "bar").unwrap();
+        writeln!(file, "foo").unwrap();
+
+        let log_file = RwLock::new(LogFile::new(path.to_string()).unwrap());
+        let mut write_ops = FileWriteOps::new(std::sync::Arc::new(log_file));
+        while !write_ops.index_lines().unwrap() {}
+
+        let shared = write_ops.log_file();
+        let read_guard = shared.read().unwrap();
+        let batch = FileReadOps::compute_search_batch(&read_guard, "foo", 0, 3).unwrap();
+
+        assert_eq!(batch.len(), 3);
+        assert_eq!(batch[0].line_index, 0);
+        assert_eq!(batch[1].line_index, 0);
+        assert_eq!(batch[2].line_index, 2);
 
         std::fs::remove_file(path).unwrap();
     }

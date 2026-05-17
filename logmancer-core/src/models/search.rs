@@ -12,6 +12,9 @@ pub struct SearchMatch {
 pub struct PageSearchResult {
     pub query: String,
     pub total_matches: usize,
+    pub total_matches_final: bool,
+    pub is_indexing: bool,
+    pub first: Option<SearchMatch>,
     pub current: Option<SearchMatch>,
     pub page_matches: Vec<SearchMatch>,
 }
@@ -23,15 +26,33 @@ pub struct SearchState {
 
 #[derive(Clone, Debug)]
 pub struct SearchSession {
+    pub generation: u64,
     pub query: String,
+    pub origin_line: usize,
+    pub phase: SearchPhase,
+    pub total_matches_final: bool,
     pub matches: Vec<SearchMatch>,
+    pub first_match: Option<SearchMatch>,
     pub current_ordinal: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+pub enum SearchPhase {
+    #[default]
+    Ready,
+    Indexing,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct SearchStatus {
     pub query: Option<String>,
+    pub generation: u64,
+    pub origin_line: Option<usize>,
+    pub phase: SearchPhase,
+    pub is_ready: bool,
     pub total_matches: usize,
+    pub total_matches_final: bool,
+    pub first: Option<SearchMatch>,
     pub current: Option<SearchMatch>,
 }
 
@@ -44,12 +65,24 @@ impl SearchState {
         match &self.session {
             Some(session) => SearchStatus {
                 query: Some(session.query.clone()),
+                generation: session.generation,
+                origin_line: Some(session.origin_line),
+                phase: session.phase.clone(),
+                is_ready: matches!(session.phase, SearchPhase::Ready),
                 total_matches: session.matches.len(),
+                total_matches_final: session.total_matches_final,
+                first: session.first_match.clone(),
                 current: session.current_match().cloned(),
             },
             None => SearchStatus {
                 query: None,
+                generation: 0,
+                origin_line: None,
+                phase: SearchPhase::Ready,
+                is_ready: true,
                 total_matches: 0,
+                total_matches_final: true,
+                first: None,
                 current: None,
             },
         }
@@ -57,12 +90,16 @@ impl SearchState {
 }
 
 impl SearchSession {
-    pub fn new(query: String, matches: Vec<SearchMatch>) -> Self {
-        let current_ordinal = if matches.is_empty() { None } else { Some(0) };
+    pub fn indexing(generation: u64, query: String, origin_line: usize) -> Self {
         Self {
+            generation,
             query,
-            matches,
-            current_ordinal,
+            origin_line,
+            phase: SearchPhase::Indexing,
+            total_matches_final: false,
+            matches: Vec::new(),
+            first_match: None,
+            current_ordinal: None,
         }
     }
 

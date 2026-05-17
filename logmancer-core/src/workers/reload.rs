@@ -1,4 +1,5 @@
 use crate::file_ops::write::FileWriteOps;
+use crate::workers::common::wait;
 use crossbeam_channel::{Receiver, Sender, select};
 use std::time::Duration;
 
@@ -37,43 +38,4 @@ pub fn spawn_reload_worker(
             }
         }
     });
-}
-
-pub fn spawn_filter_worker(mut write_ops: FileWriteOps, filter_receiver: Receiver<Option<String>>) {
-    std::thread::spawn(move || {
-        loop {
-            select! {
-                recv(filter_receiver) -> msg => {
-                    match msg {
-                        Ok(pattern) => {
-                            write_ops.filter(pattern).unwrap();
-                            loop {
-                                match write_ops.index_filter() {
-                                    Ok(end_reached) => {
-                                        if end_reached {
-                                            break;
-                                        }
-                                        wait(1);
-                                    }
-                                    Err(error) => {
-                                        panic!("Error indexing filtered lines: {error}")
-                                    }
-                                }
-                            }
-                        }
-                        Err(_) => break,
-                    }
-                }
-                default(Duration::from_secs(5)) => {}
-            }
-        }
-    });
-}
-
-fn wait(millis: u64) {
-    let ten_millis = Duration::from_millis(millis);
-    let now = std::time::Instant::now();
-    while now.elapsed() < ten_millis {
-        std::thread::sleep(ten_millis);
-    }
 }

@@ -3,7 +3,8 @@ mod handler;
 mod models;
 mod reader;
 mod registry;
-mod worker;
+mod timing;
+mod workers;
 
 pub use models::file_info::FileInfo;
 pub use models::page_result::{PageLine, PageResult};

@@ -101,7 +101,12 @@ fn main() -> std::io::Result<()> {
                 if search_query.is_empty() {
                     "OFF".to_string()
                 } else {
-                    search_query.clone()
+                    let phase = page_result
+                        .search
+                        .as_ref()
+                        .map(|s| if s.is_indexing { " (searching...)" } else { "" })
+                        .unwrap_or("");
+                    format!("{}{}", search_query, phase)
                 }
             );
             print_row!(1, "{}", "-".repeat(columns as usize));
