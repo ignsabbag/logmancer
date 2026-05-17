@@ -6,6 +6,16 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added
+
+- Shared core search engine with reusable `PageResult` search metadata (`PageSearchResult` + page-scoped match spans with multiple occurrences per line), less-style wrap navigation (`next`/`previous`), and stable match identity for frontend adapters.
+- Search API endpoints for web/desktop thin adapters (`apply-search`, `search-next`, `search-previous`, `search-status`, `clear-search`) backed directly by core semantics.
+- TUI search controls: `/` to apply/clear query and `n`/`N` for next/previous match navigation using core behavior.
+
+### Changed
+
+- Milestone version moved to `0.3.0` across crate metadata, lockfiles, desktop Tauri config, and README development version reference.
+
 ## [0.2.0] - 2026-05-15
 
 ### Added

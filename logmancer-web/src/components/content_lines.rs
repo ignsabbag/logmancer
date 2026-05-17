@@ -8,6 +8,7 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::{component, html, view, IntoView};
 use logmancer_core::PageResult;
+use std::collections::HashMap;
 use std::time::Duration;
 
 const SCROLL_RATIO: f64 = 0.15;
@@ -48,6 +49,30 @@ fn can_auto_enable_global_follow(selection_source: SelectionSource) -> bool {
 
 fn can_mutate_global_follow_state(selection_source: SelectionSource) -> bool {
     matches!(selection_source, SelectionSource::Main)
+}
+
+fn split_with_match_spans<'a>(line: &'a str, spans: &[(usize, usize)]) -> Vec<(&'a str, bool)> {
+    if spans.is_empty() {
+        return vec![(line, false)];
+    }
+
+    let mut parts = Vec::new();
+    let mut cursor = 0usize;
+    for (start, end) in spans {
+        let start = (*start).min(line.len());
+        let end = (*end).min(line.len());
+        if cursor < start {
+            parts.push((&line[cursor..start], false));
+        }
+        if start < end {
+            parts.push((&line[start..end], true));
+        }
+        cursor = end;
+    }
+    if cursor < line.len() {
+        parts.push((&line[cursor..], false));
+    }
+    parts
 }
 
 #[component]
@@ -371,6 +396,15 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         update_tail(page_result.start_line);
                     }
                     let lines = page_result.lines;
+                    let mut page_match_spans: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+                    if let Some(search) = page_result.search.as_ref() {
+                        for search_match in &search.page_matches {
+                            page_match_spans
+                                .entry(search_match.line_index + 1)
+                                .or_default()
+                                .push((search_match.start, search_match.end));
+                        }
+                    }
                     view! {
                         <div class="line-numbers">
                             { lines.iter().map(|line| {
@@ -394,12 +428,20 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                             { lines.into_iter().map(|line| {
                                 let line_number = line.number;
                                 let line_text = line.text;
+                                let spans = page_match_spans.get(&line_number).cloned().unwrap_or_default();
+                                let chunks = split_with_match_spans(&line_text, &spans);
                                 view! {
                                     <div
                                         class:selected=move || selected_line.get() == Some(line_number)
                                         on:click=move |_| select_line(line_number)
                                     >
-                                        {line_text}
+                                        {chunks.into_iter().map(|(chunk, highlighted)| {
+                                            if highlighted {
+                                                view! { <mark>{chunk.to_string()}</mark> }.into_any()
+                                            } else {
+                                                view! { <span>{chunk.to_string()}</span> }.into_any()
+                                            }
+                                        }).collect_view()}
                                     </div>
                                 }
                             }).collect::<Vec<_>>() }
@@ -415,7 +457,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 mod tests {
     use super::{
         can_auto_enable_global_follow, can_mutate_global_follow_state, is_editable_target,
-        is_handled_key, should_restore_focus,
+        is_handled_key, should_restore_focus, split_with_match_spans,
     };
     use crate::components::context::SelectionSource;
 
@@ -459,5 +501,11 @@ mod tests {
     fn global_follow_state_mutation_is_only_allowed_for_main_pane() {
         assert!(can_mutate_global_follow_state(SelectionSource::Main));
         assert!(!can_mutate_global_follow_state(SelectionSource::Filter));
+    }
+
+    #[test]
+    fn split_with_match_spans_marks_multiple_occurrences() {
+        let parts = split_with_match_spans("foo bar foo", &[(0, 3), (8, 11)]);
+        assert_eq!(parts, vec![("foo", true), (" bar ", false), ("foo", true)]);
     }
 }
