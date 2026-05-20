@@ -2,6 +2,9 @@ use crate::components::context::{
     ActivePaneContext, LogFileContext, LogViewContext, SelectionSource,
 };
 use crate::components::diagnostics::{scroll_trace, scroll_trace_enabled};
+use crate::components::layout::{
+    SCROLL_LINE_JUMP, WHEEL_SCROLL_MAX_LINE_JUMP, WHEEL_SCROLL_PIXELS_PER_LINE_STEP,
+};
 use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
@@ -11,9 +14,7 @@ use logmancer_core::PageResult;
 use std::collections::HashMap;
 use std::time::Duration;
 
-const SCROLL_RATIO: f64 = 0.15;
 const DEBOUNCE_MS: u64 = 200;
-const MIN_JUMP: i32 = 2;
 
 const ARROW_UP: &str = "ArrowUp";
 const ARROW_DOWN: &str = "ArrowDown";
@@ -49,6 +50,19 @@ fn can_auto_enable_global_follow(selection_source: SelectionSource) -> bool {
 
 fn can_mutate_global_follow_state(selection_source: SelectionSource) -> bool {
     matches!(selection_source, SelectionSource::Main)
+}
+
+fn wheel_lines_to_jump(delta: f64, is_precise_scroll: bool) -> i32 {
+    if delta <= 0.0 {
+        return 0;
+    }
+
+    if is_precise_scroll {
+        ((delta / WHEEL_SCROLL_PIXELS_PER_LINE_STEP).ceil() as i32)
+            .clamp(1, WHEEL_SCROLL_MAX_LINE_JUMP)
+    } else {
+        WHEEL_SCROLL_MAX_LINE_JUMP
+    }
 }
 
 fn split_with_match_spans<'a>(line: &'a str, spans: &[(usize, usize)]) -> Vec<(&'a str, bool)> {
@@ -142,7 +156,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         log!("Key {} pressed", key);
         match key {
             ARROW_UP => {
-                let new_line = page_result.start_line.saturating_sub(MIN_JUMP as usize);
+                let new_line = page_result.start_line.saturating_sub(SCROLL_LINE_JUMP);
                 update_tail(new_line);
                 set_start_line.set(new_line);
             }
@@ -154,7 +168,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                     }
                     return;
                 }
-                let new_line = page_result.start_line.saturating_add(MIN_JUMP as usize);
+                let new_line = page_result.start_line.saturating_add(SCROLL_LINE_JUMP);
                 update_tail(new_line);
                 set_start_line.set(new_line);
             }
@@ -225,12 +239,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
             is_precise_scroll,
             debounce.get_untracked().is_some()
         );
-        let lines_to_jump = if is_precise_scroll {
-            let lines = delta * SCROLL_RATIO;
-            MIN_JUMP.max(lines as i32)
-        } else {
-            MIN_JUMP.max((page_size.get() as f64 * SCROLL_RATIO) as i32)
-        };
+        let lines_to_jump = wheel_lines_to_jump(delta, is_precise_scroll);
         let signed_wheel_lines = lines_to_jump * signum;
         scroll_trace!(
             scroll_trace,
@@ -457,7 +466,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 mod tests {
     use super::{
         can_auto_enable_global_follow, can_mutate_global_follow_state, is_editable_target,
-        is_handled_key, should_restore_focus, split_with_match_spans,
+        is_handled_key, should_restore_focus, split_with_match_spans, wheel_lines_to_jump,
     };
     use crate::components::context::SelectionSource;
 
@@ -507,5 +516,17 @@ mod tests {
     fn split_with_match_spans_marks_multiple_occurrences() {
         let parts = split_with_match_spans("foo bar foo", &[(0, 3), (8, 11)]);
         assert_eq!(parts, vec![("foo", true), (" bar ", false), ("foo", true)]);
+    }
+
+    #[test]
+    fn precise_wheel_scroll_is_capped_to_three_lines() {
+        assert_eq!(wheel_lines_to_jump(1.0, true), 1);
+        assert_eq!(wheel_lines_to_jump(80.0, true), 2);
+        assert_eq!(wheel_lines_to_jump(240.0, true), 3);
+    }
+
+    #[test]
+    fn non_precise_wheel_scroll_uses_three_lines() {
+        assert_eq!(wheel_lines_to_jump(1.0, false), 3);
     }
 }
