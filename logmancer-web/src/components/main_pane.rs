@@ -100,7 +100,7 @@ pub fn MainPane() -> impl IntoView {
     };
 
     let clear_current_search = move || {
-        let file_id = file_id.get();
+        let file_id = file_id.get_untracked();
 
         spawn_local(async move {
             clear_search(file_id).await.ok();
@@ -112,9 +112,9 @@ pub fn MainPane() -> impl IntoView {
     };
 
     let submit_search = move || {
-        let query = search_query.get().trim().to_string();
-        let file_id = file_id.get();
-        let max_lines = page_size.get();
+        let query = search_query.get_untracked().trim().to_string();
+        let file_id = file_id.get_untracked();
+        let max_lines = page_size.get_untracked();
 
         if query.is_empty() {
             clear_current_search();

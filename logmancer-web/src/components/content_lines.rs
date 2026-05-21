@@ -132,6 +132,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
     let (debounce, set_debounce) = signal(None::<TimeoutHandle>);
     let (wheel_event_id, set_wheel_event_id) = signal(0_u64);
     let (page_result, set_page_result) = signal(None::<PageResult>);
+    let (last_handled_focus_request, set_last_handled_focus_request) = signal(0_u64);
     let scroll_trace = scroll_trace_enabled();
 
     let is_at_end = move |result: &PageResult| {
@@ -401,13 +402,17 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 
     Effect::new(move || {
         let request = focus_request.get();
-        if request == 0
-            || active_pane.get() != selection_source
+        if request == 0 || request == last_handled_focus_request.get_untracked() {
+            return;
+        }
+
+        if active_pane.get_untracked() != selection_source
             || selection_source != SelectionSource::Main
         {
             return;
         }
 
+        set_last_handled_focus_request.set(request);
         if let Some(div) = div_ref.get() {
             request_animation_frame(move || {
                 _ = div.focus();
