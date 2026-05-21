@@ -1,7 +1,8 @@
 use crate::components::context::{LogFileContext, LogViewContext};
 use crate::components::diagnostics::{scroll_trace, scroll_trace_enabled};
 use crate::components::layout::{
-    LOG_LINE_HEIGHT_PX, VIRTUAL_SCROLL_BASE_LINES, VIRTUAL_SCROLL_MAX_SPACER_HEIGHT_PX,
+    LOG_LINE_HEIGHT_PX, SCROLLBAR_ARROW_MAX_PIXEL_DELTA, SCROLL_LINE_JUMP,
+    VIRTUAL_SCROLL_BASE_LINES, VIRTUAL_SCROLL_MAX_SPACER_HEIGHT_PX,
 };
 use leptos::context::use_context;
 use leptos::logging::log;
@@ -9,6 +10,29 @@ use leptos::prelude::*;
 use leptos::{component, html, view, IntoView};
 use logmancer_core::PageResult;
 use std::time::Duration;
+
+fn scrollbar_target_line(
+    current_start_line: usize,
+    approx_line: usize,
+    scroll_delta: i32,
+    max_start_line: usize,
+) -> usize {
+    if scroll_delta == 0 {
+        return current_start_line;
+    }
+
+    if scroll_delta.abs() <= SCROLLBAR_ARROW_MAX_PIXEL_DELTA {
+        if scroll_delta < 0 {
+            current_start_line.saturating_sub(SCROLL_LINE_JUMP)
+        } else {
+            current_start_line
+                .saturating_add(SCROLL_LINE_JUMP)
+                .min(max_start_line)
+        }
+    } else {
+        approx_line.min(max_start_line)
+    }
+}
 
 #[component]
 pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
@@ -30,6 +54,7 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
     let (index_debounce, set_index_debounce) = signal::<Option<TimeoutHandle>>(None);
     let (scroll_event_id, set_scroll_event_id) = signal(0_u64);
     let (programmatic_event_id, set_programmatic_event_id) = signal(0_u64);
+    let (last_user_scroll_top, set_last_user_scroll_top) = signal(0_i32);
     let scroll_trace = scroll_trace_enabled();
 
     let update_tail = move |new_line: usize, page_result: PageResult| {
@@ -75,29 +100,43 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
                     );
                     let timeout_handle = set_timeout_with_handle(
                         move || {
-                            let ratio = page_result.total_lines as f64 * scroll.scroll_top() as f64
+                            let scroll_top = scroll.scroll_top();
+                            let scroll_delta = scroll_top - last_user_scroll_top.get_untracked();
+                            let max_start_line = page_result
+                                .total_lines
+                                .saturating_sub(page_size.get_untracked());
+                            let ratio = page_result.total_lines as f64 * scroll_top as f64
                                 / scroll.scroll_height() as f64;
                             let approx_line = ratio.floor() as usize;
+                            let target_line = scrollbar_target_line(
+                                page_result.start_line,
+                                approx_line,
+                                scroll_delta,
+                                max_start_line,
+                            );
+                            set_last_user_scroll_top.set(scroll_top);
                             scroll_trace!(
                                 scroll_trace,
-                                "scroll-trace scrollbar fire event_id={} captured_start_line={} approx_line={} scroll_top={} scroll_height={} client_height={}",
+                                "scroll-trace scrollbar fire event_id={} captured_start_line={} approx_line={} target_line={} scroll_delta={} scroll_top={} scroll_height={} client_height={}",
                                 event_id,
                                 page_result.start_line,
                                 approx_line,
-                                scroll.scroll_top(),
+                                target_line,
+                                scroll_delta,
+                                scroll_top,
                                 scroll.scroll_height(),
                                 scroll.client_height()
                             );
-                            if page_result.start_line != approx_line {
+                            if page_result.start_line != target_line {
                                 scroll_trace!(
                                     scroll_trace,
                                     "scroll-trace scrollbar apply event_id={} start_line_before={} start_line_after={}",
                                     event_id,
                                     page_result.start_line,
-                                    approx_line
+                                    target_line
                                 );
-                                update_tail(approx_line, page_result);
-                                set_start_line.set(approx_line);
+                                update_tail(target_line, page_result);
+                                set_start_line.set(target_line);
                             }
                             set_scroll_debounce.set(None);
                         },
@@ -149,6 +188,7 @@ pub fn ContentScroll(context: LogViewContext) -> impl IntoView {
             );
             set_programmatic_scroll.set(true);
             scroll.set_scroll_top(scroll_pos.get());
+            set_last_user_scroll_top.set(scroll_pos.get());
 
             if let Some(spacer) = spacer_ref.get() {
                 (*spacer)
@@ -225,4 +265,34 @@ fn calculate_spacer_height(lines: usize) -> usize {
                 / 2.0
     };
     height.min(VIRTUAL_SCROLL_MAX_SPACER_HEIGHT_PX) as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::scrollbar_target_line;
+
+    #[test]
+    fn small_scrollbar_delta_moves_one_line() {
+        assert_eq!(scrollbar_target_line(10, 16, 16, 100), 11);
+        assert_eq!(scrollbar_target_line(10, 16, 90, 100), 11);
+        assert_eq!(scrollbar_target_line(10, 4, -16, 100), 9);
+        assert_eq!(scrollbar_target_line(10, 4, -90, 100), 9);
+    }
+
+    #[test]
+    fn large_scrollbar_delta_uses_absolute_target() {
+        assert_eq!(scrollbar_target_line(10, 80, 180, 100), 80);
+    }
+
+    #[test]
+    fn scrollbar_target_stays_within_bounds() {
+        assert_eq!(scrollbar_target_line(0, 0, -16, 100), 0);
+        assert_eq!(scrollbar_target_line(100, 120, 16, 100), 100);
+        assert_eq!(scrollbar_target_line(10, 120, 180, 100), 100);
+    }
+
+    #[test]
+    fn zero_scrollbar_delta_keeps_current_line() {
+        assert_eq!(scrollbar_target_line(10, 20, 0, 100), 10);
+    }
 }

@@ -72,25 +72,29 @@ pub fn FilterPane() -> impl IntoView {
         set_filter_text.set(value);
     };
 
+    let apply_current_filter = move || {
+        let text = filter_text.get();
+        if !text.is_empty() {
+            let file_id = file_id.get();
+            let text_clone = text.clone();
+
+            spawn_local(async move {
+                apply_filter_fetch(file_id, text_clone).await.ok();
+                set_filter_applied.set(true);
+                set_indexing_progress.set(0.0);
+                // Reset scroll position when filter changes
+                set_start_line.set(0);
+            });
+        } else {
+            set_filter_applied.set(false);
+            set_indexing_progress.set(0.0);
+        }
+    };
+
     let on_key_down = move |ev: KeyboardEvent| {
         set_active_pane.set(SelectionSource::Filter);
         if ev.key() == "Enter" {
-            let text = filter_text.get();
-            if !text.is_empty() {
-                let file_id = file_id.get();
-                let text_clone = text.clone();
-
-                spawn_local(async move {
-                    apply_filter_fetch(file_id, text_clone).await.ok();
-                    set_filter_applied.set(true);
-                    set_indexing_progress.set(0.0);
-                    // Reset scroll position when filter changes
-                    set_start_line.set(0);
-                });
-            } else {
-                set_filter_applied.set(false);
-                set_indexing_progress.set(0.0);
-            }
+            apply_current_filter();
         }
     };
 
@@ -136,6 +140,17 @@ pub fn FilterPane() -> impl IntoView {
                     on:keydown=on_key_down
                     on:focus=move |_| set_active_pane.set(SelectionSource::Filter)
                 />
+                <button
+                    type="button"
+                    class="filter-search-button"
+                    disabled=move || filter_text.get().is_empty() && !filter_applied.get()
+                    on:click=move |_| {
+                        set_active_pane.set(SelectionSource::Filter);
+                        apply_current_filter();
+                    }
+                >
+                    {move || if filter_text.get().is_empty() && filter_applied.get() { "Clear" } else { "Search" }}
+                </button>
             </div>
             <PaneIndexProgress
                 context=log_view_context.clone()
