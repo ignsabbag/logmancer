@@ -37,7 +37,6 @@ pub fn FilterPane() -> impl IntoView {
 
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
-
     let filter_page = LocalResource::new(move || {
         let file_id = file_id.get();
         let start = start_line.get();

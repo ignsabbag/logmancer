@@ -1,9 +1,10 @@
-use crate::components::async_functions::fetch_page;
+use crate::components::async_functions::{apply_search, clear_search, fetch_page};
 use crate::components::auto_scroll_status::AutoScrollStatus;
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{
-    ActivePaneContext, LogFileContext, LogViewContext, SelectionContext, SelectionSource,
+    ActivePaneContext, LogContentFocusContext, LogFileContext, LogViewContext,
+    SearchCommandContext, SearchUiContext, SelectionContext, SelectionSource,
 };
 use crate::components::layout::LOG_LINE_HEIGHT_PX;
 use crate::components::pane_index_progress::PaneIndexProgress;
@@ -11,6 +12,7 @@ use leptos::context::use_context;
 use leptos::html::Div;
 use leptos::leptos_dom::log;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos::{component, view, IntoView};
 use leptos_use::use_resize_observer;
 
@@ -46,6 +48,20 @@ pub fn MainPane() -> impl IntoView {
         active_pane,
         set_active_pane,
     } = use_context().expect("ActivePaneContext not found");
+    let SearchUiContext {
+        query: search_query,
+        set_status: set_search_status,
+        ..
+    } = use_context().expect("SearchUiContext not found");
+    let SearchCommandContext {
+        submit_request: search_submit_request,
+        clear_request: search_clear_request,
+        ..
+    } = use_context().expect("SearchCommandContext not found");
+    let LogContentFocusContext {
+        request_focus: request_log_content_focus,
+        ..
+    } = use_context().expect("LogContentFocusContext not found");
 
     let div_ref = NodeRef::<Div>::new();
     let (content_width, set_content_width) = signal(2048_f64);
@@ -78,6 +94,63 @@ pub fn MainPane() -> impl IntoView {
         set_active_pane,
     };
 
+    let return_focus_to_main = move || {
+        set_active_pane.set(SelectionSource::Main);
+        request_log_content_focus.update(|request| *request = request.saturating_add(1));
+    };
+
+    let clear_current_search = move || {
+        let file_id = file_id.get_untracked();
+
+        spawn_local(async move {
+            clear_search(file_id).await.ok();
+            set_selected_original_line.set(None);
+            set_start_line.notify();
+            set_search_status.set(String::new());
+            return_focus_to_main();
+        });
+    };
+
+    let submit_search = move || {
+        let query = search_query.get_untracked().trim().to_string();
+        let file_id = file_id.get_untracked();
+        let max_lines = page_size.get_untracked();
+
+        if query.is_empty() {
+            clear_current_search();
+            return;
+        }
+
+        set_search_status.set("Searching...".to_string());
+        spawn_local(async move {
+            match apply_search(file_id, query, max_lines).await {
+                Ok(page) => {
+                    set_tail.set(false);
+                    set_follow.set(false);
+                    set_start_line.set(page.start_line);
+                    set_start_line.notify();
+
+                    let selected_match = page
+                        .search
+                        .as_ref()
+                        .and_then(|search| search.current.as_ref().or(search.first.as_ref()))
+                        .cloned();
+                    if let Some(search_match) = selected_match {
+                        set_selected_line_source.set(SelectionSource::Main);
+                        set_selected_original_line.set(Some(search_match.line_index + 1));
+                    }
+
+                    set_search_status.set(String::new());
+                    return_focus_to_main();
+                }
+                Err(_) => {
+                    set_search_status.set("Search failed".to_string());
+                    return_focus_to_main();
+                }
+            }
+        });
+    };
+
     Effect::new(move || {
         if selected_line_source.get() != SelectionSource::Filter {
             return;
@@ -90,6 +163,24 @@ pub fn MainPane() -> impl IntoView {
             set_follow.set(false);
             set_start_line.set(reveal_start_line);
         }
+    });
+
+    Effect::new(move || {
+        let request = search_submit_request.get();
+        if request == 0 {
+            return;
+        }
+
+        submit_search();
+    });
+
+    Effect::new(move || {
+        let request = search_clear_request.get();
+        if request == 0 {
+            return;
+        }
+
+        clear_current_search();
     });
 
     Effect::new(move || {

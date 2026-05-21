@@ -1,12 +1,20 @@
 use crate::components::context::{
-    ActivePaneContext, LogFileContext, SelectionContext, SelectionSource,
+    ActivePaneContext, LogContentFocusContext, LogFileContext, SearchCommandContext,
+    SearchUiContext, SelectionContext, SelectionSource,
 };
 use crate::components::filter_pane::FilterPane;
 use crate::components::main_pane::MainPane;
+use crate::components::search_panel::SearchPanel;
+#[cfg(target_arch = "wasm32")]
+use leptos::ev::{keydown, KeyboardEvent};
 use leptos::html;
 use leptos::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use leptos::wasm_bindgen::JsCast;
 use leptos::{component, view, IntoView};
 use leptos_router::hooks::use_params_map;
+#[cfg(target_arch = "wasm32")]
+use leptos_use::use_event_listener;
 
 #[component]
 pub fn LogView() -> impl IntoView {
@@ -18,7 +26,73 @@ pub fn LogView() -> impl IntoView {
     let (active_pane, set_active_pane) = signal(SelectionSource::Main);
     let (filter_height_percent, set_filter_height_percent) = signal(30.0_f64);
     let (is_resizing, set_is_resizing) = signal(false);
+    let (search_panel_visible, set_search_panel_visible) = signal(false);
+    let (search_query, set_search_query) = signal(String::new());
+    let (search_status, set_search_status) = signal(String::new());
+    let (search_focus_request, request_search_focus) = signal(0_u64);
+    let (search_close_request, request_search_close) = signal(0_u64);
+    let (search_submit_request, request_search_submit) = signal(0_u64);
+    let (search_clear_request, request_search_clear) = signal(0_u64);
+    let (log_content_focus_request, request_log_content_focus) = signal(0_u64);
     let log_view_ref: NodeRef<html::Div> = NodeRef::new();
+
+    let focus_main_content = move || {
+        set_active_pane.set(SelectionSource::Main);
+        request_log_content_focus.update(|request| *request = request.saturating_add(1));
+    };
+
+    #[cfg(target_arch = "wasm32")]
+    let open_search_panel = move || {
+        set_search_panel_visible.set(true);
+        set_search_status.set(String::new());
+        request_search_focus.update(|request| *request = request.saturating_add(1));
+    };
+
+    let close_search_panel = move || {
+        set_search_panel_visible.set(false);
+        set_search_status.set(String::new());
+        focus_main_content();
+
+        if let Some(log_view) = log_view_ref.get() {
+            request_animation_frame(move || {
+                _ = log_view.focus();
+            });
+        }
+    };
+
+    #[cfg(target_arch = "wasm32")]
+    let _search_shortcut_cleanup =
+        use_event_listener(web_sys::window(), keydown, move |ev: KeyboardEvent| {
+            let target = ev
+                .target()
+                .and_then(|target| target.dyn_into::<leptos::web_sys::HtmlElement>().ok());
+            let is_editable_target = target
+                .as_ref()
+                .map(|element| {
+                    matches!(element.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+                        || element
+                            .get_attribute("contenteditable")
+                            .map(|value| value.eq_ignore_ascii_case("true") || value.is_empty())
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false);
+            let opens_with_slash =
+                ev.key() == "/" && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key();
+            let opens_with_find =
+                (ev.ctrl_key() || ev.meta_key()) && ev.key().eq_ignore_ascii_case("f");
+
+            if ev.key() == "Escape" {
+                if search_panel_visible.get_untracked() {
+                    request_search_close.update(|request| *request = request.saturating_add(1));
+                }
+                return;
+            }
+
+            if opens_with_find || (opens_with_slash && !is_editable_target) {
+                ev.prevent_default();
+                open_search_panel();
+            }
+        });
 
     let update_split = move |event: leptos::ev::PointerEvent| {
         if !is_resizing.get() {
@@ -61,6 +135,38 @@ pub fn LogView() -> impl IntoView {
         set_active_pane,
     });
 
+    provide_context(SearchUiContext {
+        visible: search_panel_visible,
+        query: search_query,
+        set_query: set_search_query,
+        status: search_status,
+        set_status: set_search_status,
+        focus_request: search_focus_request,
+        request_focus: request_search_focus,
+        request_close: request_search_close,
+    });
+
+    provide_context(SearchCommandContext {
+        submit_request: search_submit_request,
+        request_submit: request_search_submit,
+        clear_request: search_clear_request,
+        request_clear: request_search_clear,
+    });
+
+    provide_context(LogContentFocusContext {
+        focus_request: log_content_focus_request,
+        request_focus: request_log_content_focus,
+    });
+
+    Effect::new(move || {
+        let request = search_close_request.get();
+        if request == 0 || !search_panel_visible.get_untracked() {
+            return;
+        }
+
+        close_search_panel();
+    });
+
     view! {
         <div
             node_ref=log_view_ref
@@ -74,6 +180,7 @@ pub fn LogView() -> impl IntoView {
             on:pointermove=update_split
             on:pointerup=move |_| set_is_resizing.set(false)
             on:pointerleave=move |_| set_is_resizing.set(false)
+            tabindex="0"
         >
             <div
                 class=move || {
@@ -106,6 +213,7 @@ pub fn LogView() -> impl IntoView {
             >
                 <FilterPane />
             </div>
+            <SearchPanel />
         </div>
     }
 }

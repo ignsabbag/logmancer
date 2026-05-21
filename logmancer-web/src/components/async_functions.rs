@@ -1,7 +1,7 @@
 use crate::api::commons::{
-    ApiError, ApplyFilterRequest, OpenServerFileResponse, ReadFilterRequest, ReadPageRequest,
-    ServerBrowserListRequest, ServerBrowserListResponse, ServerBrowserOpenRequest,
-    ServerBrowserStatusResponse, TailRequest,
+    ApiError, ApplyFilterRequest, ApplySearchRequest, OpenServerFileResponse, ReadFilterRequest,
+    ReadPageRequest, SearchStatusRequest, ServerBrowserListRequest, ServerBrowserListResponse,
+    ServerBrowserOpenRequest, ServerBrowserStatusResponse, TailRequest,
 };
 use leptos::prelude::{window, ServerFnError};
 use leptos::wasm_bindgen::{JsCast, JsValue};
@@ -42,6 +42,32 @@ pub async fn apply_filter(file_id: String, filter: String) -> Result<String, Ser
     let request = reqwest::Client::new()
         .post(url)
         .json(&ApplyFilterRequest { file_id, filter });
+    let result = request.send().await?.json::<String>().await?;
+    Ok(result)
+}
+
+pub async fn apply_search(
+    file_id: String,
+    query: String,
+    max_lines: usize,
+) -> Result<PageResult, ServerFnError> {
+    let base = window().location().origin().unwrap();
+    let url = format!("{base}/api/apply-search");
+    let request = reqwest::Client::new().post(url).json(&ApplySearchRequest {
+        file_id,
+        query,
+        max_lines,
+    });
+    let result = request.send().await?.json::<PageResult>().await?;
+    Ok(result)
+}
+
+pub async fn clear_search(file_id: String) -> Result<String, ServerFnError> {
+    let base = window().location().origin().unwrap();
+    let url = format!("{base}/api/clear-search");
+    let request = reqwest::Client::new()
+        .get(url)
+        .query(&SearchStatusRequest { file_id });
     let result = request.send().await?.json::<String>().await?;
     Ok(result)
 }
