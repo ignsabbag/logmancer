@@ -16,6 +16,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 - Milestone version moved to `0.3.0` across crate metadata, lockfiles, desktop Tauri config, and README development version reference.
 - Web/desktop log scrolling now uses gentler increments for arrow keys, native scrollbar movement, and mouse wheel input.
+- Web/desktop filter controls now include a visible Search button and use a tighter monospace presentation.
 
 ## [0.2.0] - 2026-05-15
 
