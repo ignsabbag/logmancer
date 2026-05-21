@@ -1,5 +1,5 @@
 use crate::components::context::{
-    ActivePaneContext, LogFileContext, LogViewContext, SelectionSource,
+    ActivePaneContext, LogContentFocusContext, LogFileContext, LogViewContext, SelectionSource,
 };
 use crate::components::diagnostics::{scroll_trace, scroll_trace_enabled};
 use crate::components::layout::{
@@ -112,11 +112,12 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         selection_source,
         set_selected_line_source,
         set_active_pane,
-        focus_request,
         ..
     } = context;
 
     let ActivePaneContext { active_pane, .. } = use_context().expect("ActivePaneContext not found");
+    let LogContentFocusContext { focus_request, .. } =
+        use_context().expect("LogContentFocusContext not found");
 
     let select_line = move |line_number| {
         set_active_pane.set(selection_source);
@@ -400,12 +401,17 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 
     Effect::new(move || {
         let request = focus_request.get();
-        if request == 0 || active_pane.get() != selection_source {
+        if request == 0
+            || active_pane.get() != selection_source
+            || selection_source != SelectionSource::Main
+        {
             return;
         }
 
         if let Some(div) = div_ref.get() {
-            _ = div.focus();
+            request_animation_frame(move || {
+                _ = div.focus();
+            });
         }
     });
 

@@ -28,9 +28,29 @@ pub struct ActivePaneContext {
 }
 
 #[derive(Clone)]
-pub struct SearchShortcutContext {
-    pub open_request: ReadSignal<u64>,
-    pub close_request: ReadSignal<u64>,
+pub struct SearchUiContext {
+    pub visible: ReadSignal<bool>,
+    pub query: ReadSignal<String>,
+    pub set_query: WriteSignal<String>,
+    pub status: ReadSignal<String>,
+    pub set_status: WriteSignal<String>,
+    pub focus_request: ReadSignal<u64>,
+    pub request_focus: WriteSignal<u64>,
+    pub request_close: WriteSignal<u64>,
+}
+
+#[derive(Clone)]
+pub struct SearchCommandContext {
+    pub submit_request: ReadSignal<u64>,
+    pub request_submit: WriteSignal<u64>,
+    pub clear_request: ReadSignal<u64>,
+    pub request_clear: WriteSignal<u64>,
+}
+
+#[derive(Clone)]
+pub struct LogContentFocusContext {
+    pub focus_request: ReadSignal<u64>,
+    pub request_focus: WriteSignal<u64>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -52,5 +72,4 @@ pub struct LogViewContext {
     pub selection_source: SelectionSource,
     pub set_selected_line_source: WriteSignal<SelectionSource>,
     pub set_active_pane: WriteSignal<SelectionSource>,
-    pub focus_request: ReadSignal<u64>,
 }

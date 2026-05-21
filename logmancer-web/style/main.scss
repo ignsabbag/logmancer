@@ -454,6 +454,11 @@ body {
   box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.12);
 }
 
+.search-panel--hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .search-panel__prefix {
   color: #64748b;
   font-weight: 700;

@@ -3,12 +3,11 @@ use crate::components::auto_scroll_status::AutoScrollStatus;
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{
-    ActivePaneContext, LogFileContext, LogViewContext, SearchShortcutContext, SelectionContext,
-    SelectionSource,
+    ActivePaneContext, LogContentFocusContext, LogFileContext, LogViewContext,
+    SearchCommandContext, SearchUiContext, SelectionContext, SelectionSource,
 };
 use crate::components::layout::LOG_LINE_HEIGHT_PX;
 use crate::components::pane_index_progress::PaneIndexProgress;
-use crate::components::search_panel::SearchPanel;
 use leptos::context::use_context;
 use leptos::html::Div;
 use leptos::leptos_dom::log;
@@ -49,10 +48,20 @@ pub fn MainPane() -> impl IntoView {
         active_pane,
         set_active_pane,
     } = use_context().expect("ActivePaneContext not found");
-    let SearchShortcutContext {
-        open_request: search_open_request,
-        close_request: search_close_request,
-    } = use_context().expect("SearchShortcutContext not found");
+    let SearchUiContext {
+        query: search_query,
+        set_status: set_search_status,
+        ..
+    } = use_context().expect("SearchUiContext not found");
+    let SearchCommandContext {
+        submit_request: search_submit_request,
+        clear_request: search_clear_request,
+        ..
+    } = use_context().expect("SearchCommandContext not found");
+    let LogContentFocusContext {
+        request_focus: request_log_content_focus,
+        ..
+    } = use_context().expect("LogContentFocusContext not found");
 
     let div_ref = NodeRef::<Div>::new();
     let (content_width, set_content_width) = signal(2048_f64);
@@ -61,11 +70,6 @@ pub fn MainPane() -> impl IntoView {
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
     let (indexing_progress, set_indexing_progress) = signal(0_f64);
-    let (focus_request, set_focus_request) = signal(0_u64);
-    let (search_panel_visible, set_search_panel_visible) = signal(false);
-    let (search_text, set_search_text) = signal(String::new());
-    let (search_status, set_search_status) = signal(String::new());
-    let (search_focus_request, set_search_focus_request) = signal(0_u64);
     let log_page = LocalResource::new(move || {
         fetch_page(
             file_id.get(),
@@ -88,33 +92,32 @@ pub fn MainPane() -> impl IntoView {
         selection_source: SelectionSource::Main,
         set_selected_line_source,
         set_active_pane,
-        focus_request,
     };
 
     let return_focus_to_main = move || {
         set_active_pane.set(SelectionSource::Main);
-        set_focus_request.update(|request| *request = request.saturating_add(1));
+        request_log_content_focus.update(|request| *request = request.saturating_add(1));
     };
 
-    let close_search_panel = move || {
-        set_search_panel_visible.set(false);
-        set_search_status.set(String::new());
-        return_focus_to_main();
+    let clear_current_search = move || {
+        let file_id = file_id.get();
+
+        spawn_local(async move {
+            clear_search(file_id).await.ok();
+            set_selected_original_line.set(None);
+            set_start_line.notify();
+            set_search_status.set(String::new());
+            return_focus_to_main();
+        });
     };
 
     let submit_search = move || {
-        let query = search_text.get().trim().to_string();
+        let query = search_query.get().trim().to_string();
         let file_id = file_id.get();
         let max_lines = page_size.get();
 
         if query.is_empty() {
-            spawn_local(async move {
-                clear_search(file_id).await.ok();
-                set_selected_original_line.set(None);
-                set_start_line.notify();
-                set_search_status.set(String::new());
-                return_focus_to_main();
-            });
+            clear_current_search();
             return;
         }
 
@@ -163,23 +166,21 @@ pub fn MainPane() -> impl IntoView {
     });
 
     Effect::new(move || {
-        let request = search_open_request.get();
+        let request = search_submit_request.get();
         if request == 0 {
             return;
         }
 
-        set_search_panel_visible.set(true);
-        set_search_status.set(String::new());
-        set_search_focus_request.update(|request| *request = request.saturating_add(1));
+        submit_search();
     });
 
     Effect::new(move || {
-        let request = search_close_request.get();
-        if request == 0 || !search_panel_visible.get() {
+        let request = search_clear_request.get();
+        if request == 0 {
             return;
         }
 
-        close_search_panel();
+        clear_current_search();
     });
 
     Effect::new(move || {
@@ -217,16 +218,6 @@ pub fn MainPane() -> impl IntoView {
                 <ContentScroll context=log_view_context.clone() />
             </div>
             <AutoScrollStatus />
-            <SearchPanel
-                visible=search_panel_visible
-                text=search_text
-                set_text=set_search_text
-                status=search_status
-                set_status=set_search_status
-                focus_request=search_focus_request
-                on_submit=submit_search
-                on_close=close_search_panel
-            />
         </div>
     }
 }
