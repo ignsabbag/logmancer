@@ -6,6 +6,7 @@ Logmancer search is a **core-owned capability** shared by Web, Desktop, and TUI:
 
 - Search behavior lives in `logmancer-core`, not in each client.
 - `PageResult` remains the primary page response and may include optional search metadata.
+- Web/Desktop expose search through a bottom search panel opened with `/` or `Ctrl+F`.
 - Clients render page-scoped match spans and highlight the current match.
 - Navigation uses shared `next` / `previous` semantics with less-style wrapping.
 - Search matches support multiple occurrences per line.
@@ -20,6 +21,24 @@ Logmancer search is a **core-owned capability** shared by Web, Desktop, and TUI:
 | Press previous | Core moves to the previous match and returns a page positioned around it. |
 | Reach last/first match | Navigation wraps, matching less-style search behavior. |
 | Clear search | Core removes active search metadata and normal page reads continue. |
+
+## Web/Desktop search panel
+
+Issue #21 adds the Web/Desktop entry point for shared search. It should stay focused on starting a search, revealing the first match, and rendering matches already visible on the current page.
+
+| Interaction | Expected result |
+|---|---|
+| Press `/` | Open the bottom search panel and focus the input. |
+| Press `Ctrl+F` | Open the same search panel and focus the input. |
+| Type query | Update the input value without moving focus away from the search panel. |
+| Press `Enter` | Submit the query, run shared search, reveal or select the first returned match, keep the panel visible, then move focus back to the main log panel. |
+| Press `Esc` | Close the search panel cleanly without submitting a new search. |
+| Click `x` | Close the search panel cleanly. |
+| Submit an empty query | Reset search cleanly without stale highlights while keeping the panel visible. |
+
+The panel is hidden by default. When visible, it is a compact fixed panel pinned to the bottom of the whole viewport/window. It spans the full window width, with the search input and `x` close button aligned on the right. The input receives focus immediately when opened or reopened with `/` or `Ctrl+F` so keyboard search works without an extra click. `Esc` and `x` are the only close interactions for issue #21; submitting with `Enter` leaves the panel visible.
+
+Navigation between matches with `n` / `N` is intentionally out of scope for issue #21 and belongs to issue #23. Issue #21 may introduce state that makes #23 straightforward, but it should not implement next/previous navigation behavior.
 
 ## Response model
 
@@ -115,8 +134,12 @@ The worker may discover matches in circular scan order for responsiveness, but s
 - [ ] Search behavior is owned by `logmancer-core`.
 - [ ] `PageResult` remains the primary response contract.
 - [ ] Search metadata is optional and page-scoped.
+- [ ] Web/Desktop `/` opens a bottom search panel with focused input.
+- [ ] Web/Desktop `Ctrl+F` opens the same search panel with focused input.
+- [ ] Web/Desktop `Esc` and `x` close the search panel cleanly.
+- [ ] Web/Desktop `Enter` submits search, keeps the panel visible, and returns focus to the main log panel.
 - [ ] Multiple matches per line are represented with line + span + ordinal.
-- [ ] `next` / `previous` navigation wraps.
+- [ ] `next` / `previous` navigation wraps in core/API; Web/Desktop `n` / `N` controls are intentionally deferred to issue #23.
 - [ ] Scroll position does not change the selected current match.
 - [ ] Web/Desktop and TUI only render core-provided search metadata.
 - [ ] Large-file search work is batchable and does not require one long synchronous scan.

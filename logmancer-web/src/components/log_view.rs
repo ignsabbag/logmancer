@@ -1,10 +1,12 @@
 use crate::components::context::{
-    ActivePaneContext, LogFileContext, SelectionContext, SelectionSource,
+    ActivePaneContext, LogFileContext, SearchShortcutContext, SelectionContext, SelectionSource,
 };
 use crate::components::filter_pane::FilterPane;
 use crate::components::main_pane::MainPane;
+use leptos::ev::KeyboardEvent;
 use leptos::html;
 use leptos::prelude::*;
+use leptos::wasm_bindgen::JsCast;
 use leptos::{component, view, IntoView};
 use leptos_router::hooks::use_params_map;
 
@@ -18,7 +20,38 @@ pub fn LogView() -> impl IntoView {
     let (active_pane, set_active_pane) = signal(SelectionSource::Main);
     let (filter_height_percent, set_filter_height_percent) = signal(30.0_f64);
     let (is_resizing, set_is_resizing) = signal(false);
+    let (search_open_request, set_search_open_request) = signal(0_u64);
+    let (search_close_request, set_search_close_request) = signal(0_u64);
     let log_view_ref: NodeRef<html::Div> = NodeRef::new();
+
+    let on_key_down = move |ev: KeyboardEvent| {
+        let target = ev
+            .target()
+            .and_then(|target| target.dyn_into::<leptos::web_sys::HtmlElement>().ok());
+        let is_editable_target = target
+            .as_ref()
+            .map(|element| {
+                matches!(element.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+                    || element
+                        .get_attribute("contenteditable")
+                        .map(|value| value.eq_ignore_ascii_case("true") || value.is_empty())
+                        .unwrap_or(false)
+            })
+            .unwrap_or(false);
+        let opens_with_slash = ev.key() == "/" && !ev.ctrl_key() && !ev.meta_key() && !ev.alt_key();
+        let opens_with_find =
+            (ev.ctrl_key() || ev.meta_key()) && ev.key().eq_ignore_ascii_case("f");
+
+        if ev.key() == "Escape" {
+            set_search_close_request.update(|request| *request = request.saturating_add(1));
+            return;
+        }
+
+        if opens_with_find || (opens_with_slash && !is_editable_target) {
+            ev.prevent_default();
+            set_search_open_request.update(|request| *request = request.saturating_add(1));
+        }
+    };
 
     let update_split = move |event: leptos::ev::PointerEvent| {
         if !is_resizing.get() {
@@ -61,6 +94,11 @@ pub fn LogView() -> impl IntoView {
         set_active_pane,
     });
 
+    provide_context(SearchShortcutContext {
+        open_request: search_open_request,
+        close_request: search_close_request,
+    });
+
     view! {
         <div
             node_ref=log_view_ref
@@ -74,6 +112,7 @@ pub fn LogView() -> impl IntoView {
             on:pointermove=update_split
             on:pointerup=move |_| set_is_resizing.set(false)
             on:pointerleave=move |_| set_is_resizing.set(false)
+            on:keydown=on_key_down
         >
             <div
                 class=move || {

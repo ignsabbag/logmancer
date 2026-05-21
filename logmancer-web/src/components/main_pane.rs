@@ -1,16 +1,19 @@
-use crate::components::async_functions::fetch_page;
+use crate::components::async_functions::{apply_search, clear_search, fetch_page};
 use crate::components::auto_scroll_status::AutoScrollStatus;
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{
-    ActivePaneContext, LogFileContext, LogViewContext, SelectionContext, SelectionSource,
+    ActivePaneContext, LogFileContext, LogViewContext, SearchShortcutContext, SelectionContext,
+    SelectionSource,
 };
 use crate::components::layout::LOG_LINE_HEIGHT_PX;
 use crate::components::pane_index_progress::PaneIndexProgress;
+use crate::components::search_panel::SearchPanel;
 use leptos::context::use_context;
 use leptos::html::Div;
 use leptos::leptos_dom::log;
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use leptos::{component, view, IntoView};
 use leptos_use::use_resize_observer;
 
@@ -46,6 +49,10 @@ pub fn MainPane() -> impl IntoView {
         active_pane,
         set_active_pane,
     } = use_context().expect("ActivePaneContext not found");
+    let SearchShortcutContext {
+        open_request: search_open_request,
+        close_request: search_close_request,
+    } = use_context().expect("SearchShortcutContext not found");
 
     let div_ref = NodeRef::<Div>::new();
     let (content_width, set_content_width) = signal(2048_f64);
@@ -54,6 +61,11 @@ pub fn MainPane() -> impl IntoView {
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
     let (indexing_progress, set_indexing_progress) = signal(0_f64);
+    let (focus_request, set_focus_request) = signal(0_u64);
+    let (search_panel_visible, set_search_panel_visible) = signal(false);
+    let (search_text, set_search_text) = signal(String::new());
+    let (search_status, set_search_status) = signal(String::new());
+    let (search_focus_request, set_search_focus_request) = signal(0_u64);
     let log_page = LocalResource::new(move || {
         fetch_page(
             file_id.get(),
@@ -76,6 +88,64 @@ pub fn MainPane() -> impl IntoView {
         selection_source: SelectionSource::Main,
         set_selected_line_source,
         set_active_pane,
+        focus_request,
+    };
+
+    let return_focus_to_main = move || {
+        set_active_pane.set(SelectionSource::Main);
+        set_focus_request.update(|request| *request = request.saturating_add(1));
+    };
+
+    let close_search_panel = move || {
+        set_search_panel_visible.set(false);
+        set_search_status.set(String::new());
+        return_focus_to_main();
+    };
+
+    let submit_search = move || {
+        let query = search_text.get().trim().to_string();
+        let file_id = file_id.get();
+        let max_lines = page_size.get();
+
+        if query.is_empty() {
+            spawn_local(async move {
+                clear_search(file_id).await.ok();
+                set_selected_original_line.set(None);
+                set_start_line.notify();
+                set_search_status.set(String::new());
+                return_focus_to_main();
+            });
+            return;
+        }
+
+        set_search_status.set("Searching...".to_string());
+        spawn_local(async move {
+            match apply_search(file_id, query, max_lines).await {
+                Ok(page) => {
+                    set_tail.set(false);
+                    set_follow.set(false);
+                    set_start_line.set(page.start_line);
+                    set_start_line.notify();
+
+                    let selected_match = page
+                        .search
+                        .as_ref()
+                        .and_then(|search| search.current.as_ref().or(search.first.as_ref()))
+                        .cloned();
+                    if let Some(search_match) = selected_match {
+                        set_selected_line_source.set(SelectionSource::Main);
+                        set_selected_original_line.set(Some(search_match.line_index + 1));
+                    }
+
+                    set_search_status.set(String::new());
+                    return_focus_to_main();
+                }
+                Err(_) => {
+                    set_search_status.set("Search failed".to_string());
+                    return_focus_to_main();
+                }
+            }
+        });
     };
 
     Effect::new(move || {
@@ -90,6 +160,26 @@ pub fn MainPane() -> impl IntoView {
             set_follow.set(false);
             set_start_line.set(reveal_start_line);
         }
+    });
+
+    Effect::new(move || {
+        let request = search_open_request.get();
+        if request == 0 {
+            return;
+        }
+
+        set_search_panel_visible.set(true);
+        set_search_status.set(String::new());
+        set_search_focus_request.update(|request| *request = request.saturating_add(1));
+    });
+
+    Effect::new(move || {
+        let request = search_close_request.get();
+        if request == 0 || !search_panel_visible.get() {
+            return;
+        }
+
+        close_search_panel();
     });
 
     Effect::new(move || {
@@ -127,6 +217,16 @@ pub fn MainPane() -> impl IntoView {
                 <ContentScroll context=log_view_context.clone() />
             </div>
             <AutoScrollStatus />
+            <SearchPanel
+                visible=search_panel_visible
+                text=search_text
+                set_text=set_search_text
+                status=search_status
+                set_status=set_search_status
+                focus_request=search_focus_request
+                on_submit=submit_search
+                on_close=close_search_panel
+            />
         </div>
     }
 }

@@ -65,26 +65,29 @@ fn wheel_lines_to_jump(delta: f64, is_precise_scroll: bool) -> i32 {
     }
 }
 
-fn split_with_match_spans<'a>(line: &'a str, spans: &[(usize, usize)]) -> Vec<(&'a str, bool)> {
+fn split_with_match_spans<'a>(
+    line: &'a str,
+    spans: &[(usize, usize, bool)],
+) -> Vec<(&'a str, bool, bool)> {
     if spans.is_empty() {
-        return vec![(line, false)];
+        return vec![(line, false, false)];
     }
 
     let mut parts = Vec::new();
     let mut cursor = 0usize;
-    for (start, end) in spans {
+    for (start, end, is_current) in spans {
         let start = (*start).min(line.len());
         let end = (*end).min(line.len());
         if cursor < start {
-            parts.push((&line[cursor..start], false));
+            parts.push((&line[cursor..start], false, false));
         }
         if start < end {
-            parts.push((&line[start..end], true));
+            parts.push((&line[start..end], true, *is_current));
         }
         cursor = end;
     }
     if cursor < line.len() {
-        parts.push((&line[cursor..], false));
+        parts.push((&line[cursor..], false, false));
     }
     parts
 }
@@ -109,6 +112,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         selection_source,
         set_selected_line_source,
         set_active_pane,
+        focus_request,
         ..
     } = context;
 
@@ -206,6 +210,9 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
     let on_key_down = move |ev: KeyboardEvent| {
         set_active_pane.set(selection_source);
         let key = ev.key();
+        if (ev.ctrl_key() || ev.meta_key()) && key.eq_ignore_ascii_case("f") {
+            return;
+        }
         if is_handled_key(&key) {
             ev.prevent_default();
             process_key(&key);
@@ -391,6 +398,17 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         }
     });
 
+    Effect::new(move || {
+        let request = focus_request.get();
+        if request == 0 || active_pane.get() != selection_source {
+            return;
+        }
+
+        if let Some(div) = div_ref.get() {
+            _ = div.focus();
+        }
+    });
+
     view! {
         <Transition>
             { move || Suspend::new(async move {
@@ -405,13 +423,17 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         update_tail(page_result.start_line);
                     }
                     let lines = page_result.lines;
-                    let mut page_match_spans: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+                    let mut page_match_spans: HashMap<usize, Vec<(usize, usize, bool)>> = HashMap::new();
                     if let Some(search) = page_result.search.as_ref() {
                         for search_match in &search.page_matches {
                             page_match_spans
                                 .entry(search_match.line_index + 1)
                                 .or_default()
-                                .push((search_match.start, search_match.end));
+                                .push((
+                                    search_match.start,
+                                    search_match.end,
+                                    search.current.as_ref() == Some(search_match),
+                                ));
                         }
                     }
                     view! {
@@ -444,9 +466,10 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                                         class:selected=move || selected_line.get() == Some(line_number)
                                         on:click=move |_| select_line(line_number)
                                     >
-                                        {chunks.into_iter().map(|(chunk, highlighted)| {
+                                        {chunks.into_iter().map(|(chunk, highlighted, is_current)| {
                                             if highlighted {
-                                                view! { <mark>{chunk.to_string()}</mark> }.into_any()
+                                                let class = if is_current { "search-match search-match-current" } else { "search-match" };
+                                                view! { <mark class=class>{chunk.to_string()}</mark> }.into_any()
                                             } else {
                                                 view! { <span>{chunk.to_string()}</span> }.into_any()
                                             }
@@ -514,8 +537,15 @@ mod tests {
 
     #[test]
     fn split_with_match_spans_marks_multiple_occurrences() {
-        let parts = split_with_match_spans("foo bar foo", &[(0, 3), (8, 11)]);
-        assert_eq!(parts, vec![("foo", true), (" bar ", false), ("foo", true)]);
+        let parts = split_with_match_spans("foo bar foo", &[(0, 3, false), (8, 11, true)]);
+        assert_eq!(
+            parts,
+            vec![
+                ("foo", true, false),
+                (" bar ", false, false),
+                ("foo", true, true)
+            ]
+        );
     }
 
     #[test]

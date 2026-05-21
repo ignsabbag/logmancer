@@ -37,6 +37,7 @@ pub fn FilterPane() -> impl IntoView {
 
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
+    let (focus_request, _) = signal(0_u64);
 
     let filter_page = LocalResource::new(move || {
         let file_id = file_id.get();
@@ -65,6 +66,7 @@ pub fn FilterPane() -> impl IntoView {
         selection_source: SelectionSource::Filter,
         set_selected_line_source,
         set_active_pane,
+        focus_request,
     };
 
     let on_input = move |ev: leptos::ev::Event| {

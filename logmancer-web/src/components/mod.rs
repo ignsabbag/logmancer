@@ -12,6 +12,7 @@ mod log_view;
 mod main_pane;
 mod pane_index_progress;
 mod progress_bar;
+mod search_panel;
 mod server_file_spotlight;
 
 pub use app::App;
