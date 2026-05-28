@@ -49,15 +49,16 @@ fn main() -> std::io::Result<()> {
     let mut follow_mode = false;
     let mut end_reached = false;
     let mut search_input_mode = false;
-    let mut search_query = String::new();
+    let mut search_prompt = String::new();
+    let mut ui_dirty = true;
 
     loop {
         let (columns, rows) = terminal::size()?;
-        if rows <= 2 || columns <= 8 {
+        if rows <= 3 || columns <= 8 {
             continue;
         }
 
-        let new_page_size = rows.saturating_sub(2) as usize;
+        let new_page_size = rows.saturating_sub(3) as usize;
         let dimensions_changed = (columns, rows) != last_dimensions;
         if dimensions_changed {
             page_size = new_page_size;
@@ -83,7 +84,7 @@ fn main() -> std::io::Result<()> {
         end_reached = page_first_line + page_size >= page_result.total_lines;
         let indexing_progress = page_result.indexing_progress * 100.0;
 
-        if last_page_result.as_ref() != Some(&page_result) || dimensions_changed {
+        if last_page_result.as_ref() != Some(&page_result) || dimensions_changed || ui_dirty {
             let indexed = if indexing_progress < 100.0 {
                 format!(" ({indexing_progress:.2}% indexed)")
             } else {
@@ -98,16 +99,17 @@ fn main() -> std::io::Result<()> {
                 if follow_mode { "ON" } else { "OFF" },
                 page_result.total_lines,
                 indexed,
-                if search_query.is_empty() {
-                    "OFF".to_string()
-                } else {
-                    let phase = page_result
-                        .search
-                        .as_ref()
-                        .map(|s| if s.is_indexing { " (searching...)" } else { "" })
-                        .unwrap_or("");
-                    format!("{}{}", search_query, phase)
-                }
+                page_result.search.as_ref().map_or_else(
+                    || "OFF".to_string(),
+                    |search| {
+                        let phase = if search.is_indexing {
+                            " (searching...)"
+                        } else {
+                            ""
+                        };
+                        format!("{}{}", search.query, phase)
+                    },
+                )
             );
             print_row!(1, "{}", "-".repeat(columns as usize));
 
@@ -135,11 +137,18 @@ fn main() -> std::io::Result<()> {
                 );
             }
 
-            if search_input_mode {
-                print_row!(rows as usize - 1, "/{}", search_query);
-            }
+            print_row!(
+                rows as usize - 1,
+                "{}",
+                if search_input_mode {
+                    format!("/{}", search_prompt)
+                } else {
+                    "".to_string()
+                }
+            );
 
             last_page_result = Some(page_result);
+            ui_dirty = false;
         }
         stdout().flush()?;
 
@@ -158,8 +167,12 @@ fn main() -> std::io::Result<()> {
                 match key_event.code {
                     KeyCode::Enter => {
                         search_input_mode = false;
+                        let search_query = search_prompt.trim().to_string();
+                        ui_dirty = true;
+
                         if search_query.is_empty() {
                             reader.clear_search();
+                            last_page_result = None;
                         } else if let Ok(page) =
                             reader.apply_search(search_query.clone(), page_size)
                         {
@@ -170,11 +183,17 @@ fn main() -> std::io::Result<()> {
                     }
                     KeyCode::Esc => {
                         search_input_mode = false;
+                        search_prompt.clear();
+                        ui_dirty = true;
                     }
                     KeyCode::Backspace => {
-                        search_query.pop();
+                        search_prompt.pop();
+                        ui_dirty = true;
                     }
-                    KeyCode::Char(c) => search_query.push(c),
+                    KeyCode::Char(c) => {
+                        search_prompt.push(c);
+                        ui_dirty = true;
+                    }
                     _ => {}
                 }
                 continue;
@@ -183,7 +202,8 @@ fn main() -> std::io::Result<()> {
                 KeyCode::Char('q') => break,
                 KeyCode::Char('/') => {
                     search_input_mode = true;
-                    search_query.clear();
+                    search_prompt.clear();
+                    ui_dirty = true;
                 }
                 KeyCode::Char('n') => {
                     if let Ok(page) = reader.search_next(page_size) {
