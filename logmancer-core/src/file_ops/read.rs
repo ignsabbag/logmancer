@@ -1,6 +1,7 @@
 use crate::models::log_file::LogFile;
 use crate::models::search::{PageSearchResult, SearchMatch, SearchStatus};
 use regex::Regex;
+use std::collections::HashSet;
 use std::io;
 use std::sync::RwLockReadGuard;
 
@@ -117,6 +118,27 @@ impl<'a> FileReadOps<'a> {
         })
     }
 
+    pub fn page_search_result_for_lines(&self, line_indexes: &[usize]) -> Option<PageSearchResult> {
+        let session = self.log_file.search.session.as_ref()?;
+        let visible_lines = line_indexes.iter().copied().collect::<HashSet<_>>();
+        let page_matches = session
+            .matches
+            .iter()
+            .filter(|m| visible_lines.contains(&m.line_index))
+            .cloned()
+            .collect::<Vec<SearchMatch>>();
+
+        Some(PageSearchResult {
+            query: session.query.clone(),
+            total_matches: session.matches.len(),
+            total_matches_final: session.total_matches_final,
+            is_indexing: !matches!(session.phase, crate::models::search::SearchPhase::Ready),
+            first: session.first_match.clone(),
+            current: session.current_match().cloned(),
+            page_matches,
+        })
+    }
+
     pub fn compute_search_batch(
         log_file: &LogFile,
         query: &str,
@@ -151,7 +173,17 @@ mod tests {
     use crate::models::log_file::LogFile;
     use std::fs::File;
     use std::io::Write;
+    use std::path::PathBuf;
     use std::sync::RwLock;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_file_path(prefix: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("logmancer-{prefix}-{unique}.log"))
+    }
 
     #[test]
     fn test_read_line() {
@@ -189,6 +221,52 @@ mod tests {
         assert_eq!(batch[0].line_index, 0);
         assert_eq!(batch[1].line_index, 0);
         assert_eq!(batch[2].line_index, 2);
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn page_search_result_for_lines_keeps_only_visible_matches() {
+        let path = temp_file_path("page-search-visible-lines");
+        let mut file = File::create(&path).unwrap();
+        writeln!(file, "foo").unwrap();
+        writeln!(file, "bar foo").unwrap();
+        writeln!(file, "baz").unwrap();
+
+        let log_file = RwLock::new(LogFile::new(path.to_string_lossy().into_owned()).unwrap());
+        let mut write_ops = FileWriteOps::new(std::sync::Arc::new(log_file));
+        while !write_ops.index_lines().unwrap() {}
+        write_ops.begin_search(1, "foo".to_string(), 0);
+        write_ops.merge_search_batch(
+            1,
+            vec![
+                SearchMatch {
+                    line_index: 0,
+                    start: 0,
+                    end: 3,
+                    ordinal: 0,
+                },
+                SearchMatch {
+                    line_index: 1,
+                    start: 4,
+                    end: 7,
+                    ordinal: 1,
+                },
+            ],
+            true,
+        );
+
+        let shared = write_ops.log_file();
+        let read_guard = shared.read().unwrap();
+        let read_ops = FileReadOps::new(read_guard);
+        let search = read_ops
+            .page_search_result_for_lines(&[1])
+            .expect("search metadata");
+
+        assert_eq!(search.page_matches.len(), 1);
+        assert_eq!(search.page_matches[0].line_index, 1);
+        assert_eq!(search.page_matches[0].start, 4);
+        assert_eq!(search.current.as_ref().map(|m| m.line_index), Some(0));
 
         std::fs::remove_file(path).unwrap();
     }
