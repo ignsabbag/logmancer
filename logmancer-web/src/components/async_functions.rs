@@ -1,7 +1,7 @@
 use crate::api::commons::{
     ApiError, ApplyFilterRequest, ApplySearchRequest, OpenServerFileResponse, ReadFilterRequest,
-    ReadPageRequest, SearchStatusRequest, ServerBrowserListRequest, ServerBrowserListResponse,
-    ServerBrowserOpenRequest, ServerBrowserStatusResponse, TailRequest,
+    ReadPageRequest, SearchNavigateRequest, SearchStatusRequest, ServerBrowserListRequest,
+    ServerBrowserListResponse, ServerBrowserOpenRequest, ServerBrowserStatusResponse, TailRequest,
 };
 use leptos::prelude::{window, ServerFnError};
 use leptos::wasm_bindgen::{JsCast, JsValue};
@@ -69,6 +69,29 @@ pub async fn clear_search(file_id: String) -> Result<String, ServerFnError> {
         .get(url)
         .query(&SearchStatusRequest { file_id });
     let result = request.send().await?.json::<String>().await?;
+    Ok(result)
+}
+
+pub async fn search_next(file_id: String, max_lines: usize) -> Result<PageResult, ServerFnError> {
+    let base = window().location().origin().unwrap();
+    let url = format!("{base}/api/search-next");
+    let request = reqwest::Client::new()
+        .get(url)
+        .query(&SearchNavigateRequest { file_id, max_lines });
+    let result = request.send().await?.json::<PageResult>().await?;
+    Ok(result)
+}
+
+pub async fn search_previous(
+    file_id: String,
+    max_lines: usize,
+) -> Result<PageResult, ServerFnError> {
+    let base = window().location().origin().unwrap();
+    let url = format!("{base}/api/search-previous");
+    let request = reqwest::Client::new()
+        .get(url)
+        .query(&SearchNavigateRequest { file_id, max_lines });
+    let result = request.send().await?.json::<PageResult>().await?;
     Ok(result)
 }
 

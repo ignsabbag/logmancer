@@ -45,6 +45,10 @@ pub struct SearchCommandContext {
     pub request_submit: WriteSignal<u64>,
     pub clear_request: ReadSignal<u64>,
     pub request_clear: WriteSignal<u64>,
+    pub next_request: ReadSignal<u64>,
+    pub previous_request: ReadSignal<u64>,
+    pub navigation_in_flight: ReadSignal<bool>,
+    pub set_navigation_in_flight: WriteSignal<bool>,
 }
 
 #[derive(Clone)]
