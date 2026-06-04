@@ -13,6 +13,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Web/desktop bottom search panel opened with `/` or `Ctrl+F`, backed by the shared search API and current-page match highlighting.
 - Web/desktop search match navigation with `n` and `N`, matching core/TUI wrap behavior and keeping the selected match visible (#23).
 - TUI search prompt opened with `/`, including submit/cancel handling and `n`/`N` next/previous match navigation using core behavior.
+- Search match highlighting across Web/Desktop main and filtered views plus TUI visible lines, with a distinct current-match state (#24).
 
 ### Changed
 

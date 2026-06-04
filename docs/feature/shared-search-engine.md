@@ -7,7 +7,7 @@ Logmancer search is a **core-owned capability** shared by Web, Desktop, and TUI:
 - Search behavior lives in `logmancer-core`, not in each client.
 - `PageResult` remains the primary page response and may include optional search metadata.
 - Web/Desktop expose search through a bottom search panel opened with `/` or `Ctrl+F`.
-- Clients render page-scoped match spans and highlight the current match.
+- Clients render view-scoped match spans and highlight the current match.
 - Navigation uses shared `next` / `previous` semantics with less-style wrapping.
 - Search matches support multiple occurrences per line.
 
@@ -17,6 +17,7 @@ Logmancer search is a **core-owned capability** shared by Web, Desktop, and TUI:
 |---|---|
 | Start a search | Core records the active query and begins searching from the current position. |
 | Read or scroll a page | The page response includes visible match spans when search is active. |
+| Read filtered results | The filtered page response includes search spans for the visible original log lines. |
 | Press next | Core moves to the next match and returns a page positioned around it. |
 | Press previous | Core moves to the previous match and returns a page positioned around it. |
 | Reach last/first match | Navigation wraps, matching less-style search behavior. |
@@ -61,7 +62,9 @@ PageResult {
 - total known matches,
 - current match index,
 - current match identity,
-- match spans for the visible page.
+- match spans for the visible page or filtered result set.
+
+For contiguous pages, core derives visible matches from the page range. For filtered views, visible rows can reference non-contiguous original log lines, so core projects the same search state onto the exact source line indexes returned by the filter page. Clients still receive a normal `PageSearchResult`; they do not need filter-specific search logic.
 
 ## Match identity
 
@@ -80,6 +83,7 @@ Clients are thin adapters:
 
 - Web/Desktop render all `page_matches` spans and emphasize the current one.
 - TUI renders visible matches and marks the current match.
+- Filtered views render core-provided search spans for the visible filtered rows.
 - Clients do not compute global search state or decide navigation order.
 
 This keeps UI rendering flexible while preventing each client from inventing different search semantics.
@@ -144,6 +148,7 @@ The worker may discover matches in circular scan order for responsiveness, but s
 - [ ] `next` / `previous` navigation wraps in core/API; Web/Desktop expose it through `n` / `N` controls.
 - [ ] Scroll position does not change the selected current match.
 - [ ] Web/Desktop and TUI only render core-provided search metadata.
+- [ ] Filtered pages include search metadata for visible non-contiguous source lines.
 - [ ] Large-file search work is batchable and does not require one long synchronous scan.
 - [ ] Search indexing starts from the current position and wraps to the beginning after EOF.
 - [ ] Clients show an indexing/searching state and poll until the first/current match is available.

@@ -94,10 +94,12 @@ impl LogReader {
         let mut matched_lines = 0;
         let mut current_line = 0;
         let mut lines = Vec::with_capacity(max_lines);
+        let mut visible_line_indexes = Vec::with_capacity(max_lines);
 
         while lines.len() < max_lines && current_line < processed_lines {
             if let Some(line) = read_ops.read_filter_line(current_line)? {
                 if matched_lines >= start_line {
+                    visible_line_indexes.push(current_line);
                     lines.push(PageLine {
                         number: current_line + 1,
                         text: line,
@@ -112,7 +114,7 @@ impl LogReader {
             start_line,
             total_lines,
             indexing_progress: read_ops.filter_indexing_progress()?,
-            search: None,
+            search: read_ops.page_search_result_for_lines(&visible_line_indexes),
         };
         self.current_view_start = page.start_line;
         Ok(page)
@@ -125,11 +127,13 @@ impl LogReader {
         }
         let read_ops = self.handler.read_ops();
         let mut lines = Vec::with_capacity(max_lines);
+        let mut visible_line_indexes = Vec::with_capacity(max_lines);
         let mut current_line = read_ops.total_lines()?;
 
         while lines.len() < max_lines && current_line > 0 {
             current_line -= 1;
             if let Some(line) = read_ops.read_filter_line(current_line)? {
+                visible_line_indexes.push(current_line);
                 lines.push(PageLine {
                     number: current_line + 1,
                     text: line,
@@ -137,12 +141,13 @@ impl LogReader {
             }
         }
         lines.reverse();
+        visible_line_indexes.reverse();
         let page = PageResult {
             lines,
             start_line: current_line,
             total_lines: read_ops.total_lines()?,
             indexing_progress: read_ops.filter_indexing_progress()?,
-            search: None,
+            search: read_ops.page_search_result_for_lines(&visible_line_indexes),
         };
         self.current_view_start = page.start_line;
         Ok(page)
@@ -246,6 +251,33 @@ mod tests {
                 text: "delta match".to_string(),
             }]
         );
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn read_filter_includes_search_matches_for_visible_filtered_lines() {
+        let path = temp_file_path("filter-search-highlights");
+        let mut file = File::create(&path).unwrap();
+        writeln!(file, "alpha foo").unwrap();
+        writeln!(file, "beta").unwrap();
+        writeln!(file, "gamma foo").unwrap();
+        writeln!(file, "delta").unwrap();
+        drop(file);
+
+        let mut reader = LogReader::new(path.to_string_lossy().into_owned()).unwrap();
+        reader.filter("foo".to_string());
+        reader.apply_search("foo".to_string(), 10).unwrap();
+        wait_search_ready(&reader);
+
+        let page = reader.read_filter(0, 10).unwrap();
+        let search = page.search.expect("filtered search metadata");
+
+        assert_eq!(page.lines.len(), 2);
+        assert_eq!(search.page_matches.len(), 2);
+        assert_eq!(search.page_matches[0].line_index, 0);
+        assert_eq!(search.page_matches[1].line_index, 2);
+        assert_eq!(search.current.as_ref().map(|m| m.line_index), Some(0));
 
         std::fs::remove_file(path).unwrap();
     }

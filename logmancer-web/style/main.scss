@@ -429,11 +429,23 @@ body {
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;
+  box-shadow: inset 0 0 0 1px rgba(161, 98, 7, 0.18);
 }
 
 .search-match-current {
   background: #fb923c;
   box-shadow: 0 0 0 1px rgba(194, 65, 12, 0.35);
+  color: #111827;
+}
+
+.text-lines div.selected .search-match {
+  background: #fde68a;
+  box-shadow: inset 0 0 0 1px rgba(180, 83, 9, 0.28);
+}
+
+.text-lines div.selected .search-match-current {
+  background: #f97316;
+  box-shadow: 0 0 0 1px rgba(154, 52, 18, 0.5);
 }
 
 .search-panel {

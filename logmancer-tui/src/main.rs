@@ -1,15 +1,16 @@
 #[macro_use]
 mod print_utils;
 
+use crate::print_utils::{HighlightKind, split_highlighted_segments};
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode},
     execute,
-    style::Print,
+    style::{Attribute, Color, Print, PrintStyledContent, Stylize},
     terminal,
 };
 use log::{LevelFilter, debug, error};
-use logmancer_core::LogReader;
+use logmancer_core::{LogReader, PageSearchResult};
 use std::env;
 use std::fs::OpenOptions;
 use std::io::{Write, stdout};
@@ -121,20 +122,14 @@ fn main() -> std::io::Result<()> {
                 .unwrap_or(page_result.start_line + page_size);
             let left_offset = last_line.to_string().len() + 1;
             for (i, line) in page_result.lines.iter().enumerate() {
-                print_row!(
+                render_line_row(
                     i + 2,
-                    "{:<left_offset$}{} {}{}",
                     line.number,
-                    "|",
-                    trunc_str(line.text.trim_end(), columns as usize - left_offset - 2),
-                    page_result
-                        .search
-                        .as_ref()
-                        .and_then(|search| search.current.as_ref())
-                        .filter(|current| current.line_index + 1 == line.number)
-                        .map(|_| " <")
-                        .unwrap_or("")
-                );
+                    line.text.trim_end(),
+                    left_offset,
+                    columns as usize,
+                    page_result.search.as_ref(),
+                )?;
             }
 
             print_row!(
@@ -251,7 +246,88 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
+fn render_line_row(
+    row: usize,
+    line_number: usize,
+    line_text: &str,
+    left_offset: usize,
+    columns: usize,
+    search: Option<&PageSearchResult>,
+) -> std::io::Result<()> {
+    let is_current_line = search
+        .and_then(|state| state.current.as_ref())
+        .is_some_and(|current| current.line_index + 1 == line_number);
+    let current_marker = if is_current_line { " <" } else { "" };
+    let content_width = columns.saturating_sub(left_offset + 2 + current_marker.len());
+    let visible_text = trunc_str(line_text, content_width);
+    let spans = search
+        .map(|state| collect_line_spans(state, line_number, visible_text.len()))
+        .unwrap_or_default();
+    let segments = split_highlighted_segments(visible_text, &spans);
+
+    execute!(
+        stdout(),
+        cursor::MoveTo(0, row as u16),
+        terminal::Clear(terminal::ClearType::UntilNewLine),
+        Print(format!("{line_number:<left_offset$}| "))
+    )?;
+
+    for segment in segments {
+        match segment.kind {
+            HighlightKind::Plain => execute!(stdout(), Print(segment.text))?,
+            HighlightKind::Match => execute!(
+                stdout(),
+                PrintStyledContent(segment.text.black().on(Color::Yellow))
+            )?,
+            HighlightKind::CurrentMatch => execute!(
+                stdout(),
+                PrintStyledContent(
+                    segment
+                        .text
+                        .black()
+                        .on(Color::DarkYellow)
+                        .attribute(Attribute::Bold)
+                        .attribute(Attribute::Underlined)
+                )
+            )?,
+        }
+    }
+
+    if is_current_line {
+        execute!(
+            stdout(),
+            PrintStyledContent(current_marker.with(Color::Cyan).attribute(Attribute::Bold))
+        )?;
+    }
+
+    execute!(stdout(), cursor::MoveTo(0, row as u16))?;
+    Ok(())
+}
+
+fn collect_line_spans(
+    search: &PageSearchResult,
+    line_number: usize,
+    visible_len: usize,
+) -> Vec<(usize, usize, bool)> {
+    search
+        .page_matches
+        .iter()
+        .filter(|search_match| search_match.line_index + 1 == line_number)
+        .map(|search_match| {
+            (
+                search_match.start.min(visible_len),
+                search_match.end.min(visible_len),
+                search.current.as_ref() == Some(search_match),
+            )
+        })
+        .collect()
+}
+
 fn trunc_str(s: &str, max_len: usize) -> &str {
+    if max_len == 0 {
+        return "";
+    }
+
     if s.chars().count() > max_len {
         let mut end = 0;
         for (i, _) in s.char_indices().take(max_len) {
@@ -277,4 +353,47 @@ fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
     debug!("Log initialized");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_line_spans, trunc_str};
+    use logmancer_core::{PageSearchResult, SearchMatch};
+
+    #[test]
+    fn trunc_str_returns_empty_when_width_is_zero() {
+        assert_eq!(trunc_str("foo", 0), "");
+    }
+
+    #[test]
+    fn collect_line_spans_marks_current_match_and_clamps_to_visible_text() {
+        let current = SearchMatch {
+            line_index: 4,
+            start: 6,
+            end: 20,
+            ordinal: 1,
+        };
+        let search = PageSearchResult {
+            query: "foo".to_string(),
+            total_matches: 2,
+            total_matches_final: true,
+            is_indexing: false,
+            first: None,
+            current: Some(current.clone()),
+            page_matches: vec![
+                SearchMatch {
+                    line_index: 4,
+                    start: 0,
+                    end: 3,
+                    ordinal: 0,
+                },
+                current,
+            ],
+        };
+
+        assert_eq!(
+            collect_line_spans(&search, 5, 8),
+            vec![(0, 3, false), (6, 8, true)]
+        );
+    }
 }
