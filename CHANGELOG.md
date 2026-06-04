@@ -11,6 +11,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Shared core search engine with reusable `PageResult` search metadata (`PageSearchResult` + page-scoped match spans with multiple occurrences per line), less-style wrap navigation (`next`/`previous`), and stable match identity for frontend adapters.
 - Search API endpoints for web/desktop thin adapters (`apply-search`, `search-next`, `search-previous`, `search-status`, `clear-search`) backed directly by core semantics.
 - Web/desktop bottom search panel opened with `/` or `Ctrl+F`, backed by the shared search API and current-page match highlighting.
+- Web/desktop search match navigation with `n` and `N`, matching core/TUI wrap behavior and keeping the selected match visible (#23).
 - TUI search prompt opened with `/`, including submit/cancel handling and `n`/`N` next/previous match navigation using core behavior.
 
 ### Changed

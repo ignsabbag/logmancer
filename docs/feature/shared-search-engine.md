@@ -32,13 +32,15 @@ Issue #21 adds the Web/Desktop entry point for shared search. It should stay foc
 | Press `Ctrl+F` | Open the same search panel and focus the input. |
 | Type query | Update the input value without moving focus away from the search panel. |
 | Press `Enter` | Submit the query, run shared search, reveal or select the first returned match, keep the panel visible, then move focus back to the main log panel. |
+| Press `n` | Move to the next search match, keep the selected match visible, and return focus to the main log panel. |
+| Press `N` | Move to the previous search match, keep the selected match visible, and return focus to the main log panel. |
 | Press `Esc` | Close the search panel cleanly without submitting a new search. |
 | Click `x` | Close the search panel cleanly. |
 | Submit an empty query | Reset search cleanly without stale highlights while keeping the panel visible. |
 
 The panel is hidden by default. When visible, it is a compact fixed panel pinned to the bottom of the whole viewport/window. It spans the full window width, with the search input and `x` close button aligned on the right. The input receives focus immediately when opened or reopened with `/` or `Ctrl+F` so keyboard search works without an extra click. `Esc` and `x` are the only close interactions for issue #21; submitting with `Enter` leaves the panel visible.
 
-Navigation between matches with `n` / `N` is intentionally out of scope for issue #21 and belongs to issue #23. Issue #21 may introduce state that makes #23 straightforward, but it should not implement next/previous navigation behavior.
+Navigation between matches with `n` / `N` is implemented by issue #23. Web/Desktop should treat these shortcuts as main-view commands, not search-input commands: editable targets keep normal text entry behavior, while the main log view delegates next/previous movement to the shared search API.
 
 ## Response model
 
@@ -139,7 +141,7 @@ The worker may discover matches in circular scan order for responsiveness, but s
 - [ ] Web/Desktop `Esc` and `x` close the search panel cleanly.
 - [ ] Web/Desktop `Enter` submits search, keeps the panel visible, and returns focus to the main log panel.
 - [ ] Multiple matches per line are represented with line + span + ordinal.
-- [ ] `next` / `previous` navigation wraps in core/API; Web/Desktop `n` / `N` controls are intentionally deferred to issue #23.
+- [ ] `next` / `previous` navigation wraps in core/API; Web/Desktop expose it through `n` / `N` controls.
 - [ ] Scroll position does not change the selected current match.
 - [ ] Web/Desktop and TUI only render core-provided search metadata.
 - [ ] Large-file search work is batchable and does not require one long synchronous scan.
