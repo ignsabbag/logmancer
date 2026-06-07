@@ -19,6 +19,15 @@ pub struct PageSearchResult {
     pub page_matches: Vec<SearchMatch>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct SearchDisplayStatus {
+    pub query: String,
+    pub current_match_index: Option<usize>,
+    pub total_matches: usize,
+    pub total_matches_final: bool,
+    pub is_indexing: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct SearchState {
     pub session: Option<SearchSession>,
@@ -54,6 +63,30 @@ pub struct SearchStatus {
     pub total_matches_final: bool,
     pub first: Option<SearchMatch>,
     pub current: Option<SearchMatch>,
+}
+
+impl PageSearchResult {
+    pub fn display_status(&self) -> SearchDisplayStatus {
+        SearchDisplayStatus {
+            query: self.query.clone(),
+            current_match_index: self.current.as_ref().map(|current| current.ordinal + 1),
+            total_matches: self.total_matches,
+            total_matches_final: self.total_matches_final,
+            is_indexing: self.is_indexing,
+        }
+    }
+}
+
+impl SearchStatus {
+    pub fn display_status(&self) -> Option<SearchDisplayStatus> {
+        self.query.as_ref().map(|query| SearchDisplayStatus {
+            query: query.clone(),
+            current_match_index: self.current.as_ref().map(|current| current.ordinal + 1),
+            total_matches: self.total_matches,
+            total_matches_final: self.total_matches_final,
+            is_indexing: !self.is_ready,
+        })
+    }
 }
 
 impl SearchState {
@@ -123,5 +156,82 @@ impl SearchSession {
         }
         let current = self.current_ordinal.unwrap_or(0);
         self.current_ordinal = Some((current + self.matches.len() - 1) % self.matches.len());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PageSearchResult, SearchDisplayStatus, SearchMatch, SearchPhase, SearchStatus};
+
+    #[test]
+    fn page_search_display_status_uses_one_based_current_match_index() {
+        let search = PageSearchResult {
+            query: "error".to_string(),
+            total_matches: 27,
+            total_matches_final: false,
+            is_indexing: true,
+            first: None,
+            current: Some(SearchMatch {
+                line_index: 12,
+                start: 0,
+                end: 5,
+                ordinal: 2,
+            }),
+            page_matches: Vec::new(),
+        };
+
+        assert_eq!(
+            search.display_status(),
+            SearchDisplayStatus {
+                query: "error".to_string(),
+                current_match_index: Some(3),
+                total_matches: 27,
+                total_matches_final: false,
+                is_indexing: true,
+            }
+        );
+    }
+
+    #[test]
+    fn search_status_display_status_is_absent_without_query() {
+        let status = SearchStatus {
+            query: None,
+            generation: 0,
+            origin_line: None,
+            phase: SearchPhase::Ready,
+            is_ready: true,
+            total_matches: 0,
+            total_matches_final: true,
+            first: None,
+            current: None,
+        };
+
+        assert_eq!(status.display_status(), None);
+    }
+
+    #[test]
+    fn search_status_display_status_maps_readiness_to_indexing() {
+        let status = SearchStatus {
+            query: Some("error".to_string()),
+            generation: 1,
+            origin_line: Some(0),
+            phase: SearchPhase::Indexing,
+            is_ready: false,
+            total_matches: 0,
+            total_matches_final: false,
+            first: None,
+            current: None,
+        };
+
+        assert_eq!(
+            status.display_status(),
+            Some(SearchDisplayStatus {
+                query: "error".to_string(),
+                current_match_index: None,
+                total_matches: 0,
+                total_matches_final: false,
+                is_indexing: true,
+            })
+        );
     }
 }

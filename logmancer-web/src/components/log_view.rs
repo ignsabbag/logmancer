@@ -69,13 +69,11 @@ pub fn LogView() -> impl IntoView {
     #[cfg(target_arch = "wasm32")]
     let open_search_panel = move || {
         set_search_panel_visible.set(true);
-        set_search_status.set(String::new());
         request_search_focus.update(|request| *request = request.saturating_add(1));
     };
 
     let close_search_panel = move || {
         set_search_panel_visible.set(false);
-        set_search_status.set(String::new());
         focus_main_content();
 
         if let Some(log_view) = log_view_ref.get() {

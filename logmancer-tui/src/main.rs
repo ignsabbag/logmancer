@@ -10,7 +10,7 @@ use crossterm::{
     terminal,
 };
 use log::{LevelFilter, debug, error};
-use logmancer_core::{LogReader, PageSearchResult};
+use logmancer_core::{LogReader, PageSearchResult, SearchDisplayStatus};
 use std::env;
 use std::fs::OpenOptions;
 use std::io::{Write, stdout};
@@ -100,17 +100,11 @@ fn main() -> std::io::Result<()> {
                 if follow_mode { "ON" } else { "OFF" },
                 page_result.total_lines,
                 indexed,
-                page_result.search.as_ref().map_or_else(
-                    || "OFF".to_string(),
-                    |search| {
-                        let phase = if search.is_indexing {
-                            " (searching...)"
-                        } else {
-                            ""
-                        };
-                        format!("{}{}", search.query, phase)
-                    },
-                )
+                page_result
+                    .search
+                    .as_ref()
+                    .map(|search| format_search_status(&search.display_status()))
+                    .unwrap_or_else(|| "OFF".to_string())
             );
             print_row!(1, "{}", "-".repeat(columns as usize));
 
@@ -323,6 +317,29 @@ fn collect_line_spans(
         .collect()
 }
 
+fn format_search_status(status: &SearchDisplayStatus) -> String {
+    let mut text = if status.total_matches == 0 {
+        if status.is_indexing {
+            format!("{} no matches yet", status.query)
+        } else {
+            format!("{} no matches", status.query)
+        }
+    } else if let Some(current_match_index) = status.current_match_index {
+        format!(
+            "{} {}/{}",
+            status.query, current_match_index, status.total_matches
+        )
+    } else {
+        format!("{} {} matches", status.query, status.total_matches)
+    };
+
+    if status.is_indexing {
+        text.push_str(" searching...");
+    }
+
+    text
+}
+
 fn trunc_str(s: &str, max_len: usize) -> &str {
     if max_len == 0 {
         return "";
@@ -357,8 +374,8 @@ fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_line_spans, trunc_str};
-    use logmancer_core::{PageSearchResult, SearchMatch};
+    use super::{collect_line_spans, format_search_status, trunc_str};
+    use logmancer_core::{PageSearchResult, SearchDisplayStatus, SearchMatch};
 
     #[test]
     fn trunc_str_returns_empty_when_width_is_zero() {
@@ -394,6 +411,34 @@ mod tests {
         assert_eq!(
             collect_line_spans(&search, 5, 8),
             vec![(0, 3, false), (6, 8, true)]
+        );
+    }
+
+    #[test]
+    fn format_search_status_shows_current_and_total_matches() {
+        assert_eq!(
+            format_search_status(&SearchDisplayStatus {
+                query: "error".to_string(),
+                current_match_index: Some(3),
+                total_matches: 27,
+                total_matches_final: true,
+                is_indexing: false,
+            }),
+            "error 3/27"
+        );
+    }
+
+    #[test]
+    fn format_search_status_shows_no_matches_while_indexing() {
+        assert_eq!(
+            format_search_status(&SearchDisplayStatus {
+                query: "error".to_string(),
+                current_match_index: None,
+                total_matches: 0,
+                total_matches_final: false,
+                is_indexing: true,
+            }),
+            "error no matches yet searching..."
         );
     }
 }

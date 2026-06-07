@@ -10,6 +10,7 @@ use crate::components::context::{
 };
 use crate::components::layout::LOG_LINE_HEIGHT_PX;
 use crate::components::pane_index_progress::PaneIndexProgress;
+use crate::components::search_status::format_page_search_status;
 use leptos::context::use_context;
 use leptos::html::Div;
 use leptos::leptos_dom::log;
@@ -157,6 +158,7 @@ pub fn MainPane() -> impl IntoView {
         spawn_local(async move {
             match apply_search(file_id, query, max_lines).await {
                 Ok(page) => {
+                    set_search_status.set(format_page_search_status(&page));
                     apply_search_page_result(
                         page,
                         set_tail,
@@ -165,7 +167,6 @@ pub fn MainPane() -> impl IntoView {
                         set_selected_original_line,
                         set_selected_line_source,
                     );
-                    set_search_status.set(String::new());
                     return_focus_to_main();
                 }
                 Err(_) => {
@@ -197,6 +198,7 @@ pub fn MainPane() -> impl IntoView {
 
             match result {
                 Ok(page) => {
+                    set_search_status.set(format_page_search_status(&page));
                     apply_search_page_result(
                         page,
                         set_tail,
@@ -205,7 +207,6 @@ pub fn MainPane() -> impl IntoView {
                         set_selected_original_line,
                         set_selected_line_source,
                     );
-                    set_search_status.set(String::new());
                 }
                 Err(_) => {
                     set_search_status.set(if navigate_previous {

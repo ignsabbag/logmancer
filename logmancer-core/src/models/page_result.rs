@@ -19,7 +19,11 @@ pub struct PageResult {
 
 impl PartialEq for PageResult {
     fn eq(&self, other: &Self) -> bool {
-        self.start_line == other.start_line && self.total_lines == other.total_lines
+        self.lines == other.lines
+            && self.start_line == other.start_line
+            && self.total_lines == other.total_lines
+            && self.indexing_progress == other.indexing_progress
+            && self.search == other.search
     }
 }
 
