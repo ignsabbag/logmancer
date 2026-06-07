@@ -13,6 +13,7 @@ mod main_pane;
 mod pane_index_progress;
 mod progress_bar;
 mod search_panel;
+mod search_status;
 mod server_file_spotlight;
 
 pub use app::App;

@@ -1,10 +1,12 @@
 use crate::components::context::{
-    ActivePaneContext, LogContentFocusContext, LogFileContext, LogViewContext, SelectionSource,
+    ActivePaneContext, LogContentFocusContext, LogFileContext, LogViewContext, SearchUiContext,
+    SelectionSource,
 };
 use crate::components::diagnostics::{scroll_trace, scroll_trace_enabled};
 use crate::components::layout::{
     SCROLL_LINE_JUMP, WHEEL_SCROLL_MAX_LINE_JUMP, WHEEL_SCROLL_PIXELS_PER_LINE_STEP,
 };
+use crate::components::search_status::format_page_search_status;
 use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
@@ -118,6 +120,10 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
     let ActivePaneContext { active_pane, .. } = use_context().expect("ActivePaneContext not found");
     let LogContentFocusContext { focus_request, .. } =
         use_context().expect("LogContentFocusContext not found");
+    let SearchUiContext {
+        set_status: set_search_status,
+        ..
+    } = use_context().expect("SearchUiContext not found");
 
     let select_line = move |line_number| {
         set_active_pane.set(selection_source);
@@ -424,6 +430,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         <Transition>
             { move || Suspend::new(async move {
                 log_page.await.map(|page_result| {
+                    set_search_status.set(format_page_search_status(&page_result));
                     set_page_result.set(Some(page_result.clone()));
                     if debounce.get_untracked().is_none() {
                         set_wheel_target_line.set(Some(page_result.start_line));
