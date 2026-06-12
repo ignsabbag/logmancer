@@ -6,6 +6,9 @@ use crate::components::diagnostics::{scroll_trace, scroll_trace_enabled};
 use crate::components::layout::{
     SCROLL_LINE_JUMP, WHEEL_SCROLL_MAX_LINE_JUMP, WHEEL_SCROLL_PIXELS_PER_LINE_STEP,
 };
+use crate::components::line_decorations::{
+    search_decorations_by_line, split_line_segments, DecorationKind,
+};
 use crate::components::search_status::format_page_search_status;
 use leptos::context::use_context;
 use leptos::ev::{KeyboardEvent, WheelEvent};
@@ -13,7 +16,6 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::{component, html, view, IntoView};
 use logmancer_core::PageResult;
-use std::collections::HashMap;
 use std::time::Duration;
 
 const DEBOUNCE_MS: u64 = 200;
@@ -67,31 +69,11 @@ fn wheel_lines_to_jump(delta: f64, is_precise_scroll: bool) -> i32 {
     }
 }
 
-fn split_with_match_spans<'a>(
-    line: &'a str,
-    spans: &[(usize, usize, bool)],
-) -> Vec<(&'a str, bool, bool)> {
-    if spans.is_empty() {
-        return vec![(line, false, false)];
+fn search_segment_class(kind: DecorationKind) -> &'static str {
+    match kind {
+        DecorationKind::SearchMatch => "search-match",
+        DecorationKind::SearchCurrent => "search-match search-match-current",
     }
-
-    let mut parts = Vec::new();
-    let mut cursor = 0usize;
-    for (start, end, is_current) in spans {
-        let start = (*start).min(line.len());
-        let end = (*end).min(line.len());
-        if cursor < start {
-            parts.push((&line[cursor..start], false, false));
-        }
-        if start < end {
-            parts.push((&line[start..end], true, *is_current));
-        }
-        cursor = end;
-    }
-    if cursor < line.len() {
-        parts.push((&line[cursor..], false, false));
-    }
-    parts
 }
 
 #[component]
@@ -440,20 +422,12 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                     } else {
                         update_tail(page_result.start_line);
                     }
+                    let search = page_result.search;
                     let lines = page_result.lines;
-                    let mut page_match_spans: HashMap<usize, Vec<(usize, usize, bool)>> = HashMap::new();
-                    if let Some(search) = page_result.search.as_ref() {
-                        for search_match in &search.page_matches {
-                            page_match_spans
-                                .entry(search_match.line_index + 1)
-                                .or_default()
-                                .push((
-                                    search_match.start,
-                                    search_match.end,
-                                    search.current.as_ref() == Some(search_match),
-                                ));
-                        }
-                    }
+                    let decorations_by_line = search
+                        .as_ref()
+                        .map(search_decorations_by_line)
+                        .unwrap_or_default();
                     view! {
                         <div class="line-numbers">
                             { lines.iter().map(|line| {
@@ -477,19 +451,21 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                             { lines.into_iter().map(|line| {
                                 let line_number = line.number;
                                 let line_text = line.text;
-                                let spans = page_match_spans.get(&line_number).cloned().unwrap_or_default();
-                                let chunks = split_with_match_spans(&line_text, &spans);
+                                let decorations = decorations_by_line
+                                    .get(&line_number)
+                                    .map(Vec::as_slice)
+                                    .unwrap_or(&[]);
+                                let segments = split_line_segments(&line_text, decorations);
                                 view! {
                                     <div
                                         class:selected=move || selected_line.get() == Some(line_number)
                                         on:click=move |_| select_line(line_number)
                                     >
-                                        {chunks.into_iter().map(|(chunk, highlighted, is_current)| {
-                                            if highlighted {
-                                                let class = if is_current { "search-match search-match-current" } else { "search-match" };
-                                                view! { <mark class=class>{chunk.to_string()}</mark> }.into_any()
+                                        {segments.into_iter().map(|segment| {
+                                            if let Some(kind) = segment.kind {
+                                                view! { <mark class=search_segment_class(kind)>{segment.text.to_string()}</mark> }.into_any()
                                             } else {
-                                                view! { <span>{chunk.to_string()}</span> }.into_any()
+                                                view! { <span>{segment.text.to_string()}</span> }.into_any()
                                             }
                                         }).collect_view()}
                                     </div>
@@ -507,9 +483,10 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 mod tests {
     use super::{
         can_auto_enable_global_follow, can_mutate_global_follow_state, is_editable_target,
-        is_handled_key, should_restore_focus, split_with_match_spans, wheel_lines_to_jump,
+        is_handled_key, search_segment_class, should_restore_focus, wheel_lines_to_jump,
     };
     use crate::components::context::SelectionSource;
+    use crate::components::line_decorations::DecorationKind;
 
     #[test]
     fn handled_keys_include_navigation_and_commands() {
@@ -554,15 +531,14 @@ mod tests {
     }
 
     #[test]
-    fn split_with_match_spans_marks_multiple_occurrences() {
-        let parts = split_with_match_spans("foo bar foo", &[(0, 3, false), (8, 11, true)]);
+    fn search_segment_class_preserves_existing_dom_classes() {
         assert_eq!(
-            parts,
-            vec![
-                ("foo", true, false),
-                (" bar ", false, false),
-                ("foo", true, true)
-            ]
+            search_segment_class(DecorationKind::SearchMatch),
+            "search-match"
+        );
+        assert_eq!(
+            search_segment_class(DecorationKind::SearchCurrent),
+            "search-match search-match-current"
         );
     }
 
