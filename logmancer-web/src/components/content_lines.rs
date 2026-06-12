@@ -7,7 +7,7 @@ use crate::components::layout::{
     SCROLL_LINE_JUMP, WHEEL_SCROLL_MAX_LINE_JUMP, WHEEL_SCROLL_PIXELS_PER_LINE_STEP,
 };
 use crate::components::line_decorations::{
-    search_decorations_by_line, split_line_segments, DecorationKind,
+    search_decorations_by_line, split_line_segments, DecorationKind, LineDecoration,
 };
 use crate::components::search_status::format_page_search_status;
 use leptos::context::use_context;
@@ -16,6 +16,7 @@ use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::{component, html, view, IntoView};
 use logmancer_core::PageResult;
+use std::collections::HashMap;
 use std::time::Duration;
 
 const DEBOUNCE_MS: u64 = 200;
@@ -73,6 +74,49 @@ fn search_segment_class(kind: DecorationKind) -> &'static str {
     match kind {
         DecorationKind::SearchMatch => "search-match",
         DecorationKind::SearchCurrent => "search-match search-match-current",
+    }
+}
+
+fn line_decorations_for_row(
+    decorations_by_line: &HashMap<usize, Vec<LineDecoration>>,
+    line_number: usize,
+) -> Vec<LineDecoration> {
+    decorations_by_line
+        .get(&line_number)
+        .cloned()
+        .unwrap_or_default()
+}
+
+#[component]
+fn DecoratedLineText(line_text: String, decorations: Vec<LineDecoration>) -> impl IntoView {
+    let segments = split_line_segments(&line_text, &decorations);
+
+    view! {
+        {segments.into_iter().map(|segment| {
+            if let Some(kind) = segment.kind {
+                view! { <mark class=search_segment_class(kind)>{segment.text.to_string()}</mark> }.into_any()
+            } else {
+                view! { <span>{segment.text.to_string()}</span> }.into_any()
+            }
+        }).collect_view()}
+    }
+}
+
+#[component]
+fn LogLineRow(
+    line_number: usize,
+    line_text: String,
+    decorations: Vec<LineDecoration>,
+    selected_line: ReadSignal<Option<usize>>,
+    select_line: Callback<usize>,
+) -> impl IntoView {
+    view! {
+        <div
+            class:selected=move || selected_line.get() == Some(line_number)
+            on:click=move |_| select_line.run(line_number)
+        >
+            <DecoratedLineText line_text=line_text decorations=decorations />
+        </div>
     }
 }
 
@@ -428,6 +472,7 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         .as_ref()
                         .map(search_decorations_by_line)
                         .unwrap_or_default();
+                    let select_line_callback = Callback::new(select_line);
                     view! {
                         <div class="line-numbers">
                             { lines.iter().map(|line| {
@@ -451,24 +496,15 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                             { lines.into_iter().map(|line| {
                                 let line_number = line.number;
                                 let line_text = line.text;
-                                let decorations = decorations_by_line
-                                    .get(&line_number)
-                                    .map(Vec::as_slice)
-                                    .unwrap_or(&[]);
-                                let segments = split_line_segments(&line_text, decorations);
+                                let decorations = line_decorations_for_row(&decorations_by_line, line_number);
                                 view! {
-                                    <div
-                                        class:selected=move || selected_line.get() == Some(line_number)
-                                        on:click=move |_| select_line(line_number)
-                                    >
-                                        {segments.into_iter().map(|segment| {
-                                            if let Some(kind) = segment.kind {
-                                                view! { <mark class=search_segment_class(kind)>{segment.text.to_string()}</mark> }.into_any()
-                                            } else {
-                                                view! { <span>{segment.text.to_string()}</span> }.into_any()
-                                            }
-                                        }).collect_view()}
-                                    </div>
+                                    <LogLineRow
+                                        line_number=line_number
+                                        line_text=line_text
+                                        decorations=decorations
+                                        selected_line=selected_line
+                                        select_line=select_line_callback
+                                    />
                                 }
                             }).collect::<Vec<_>>() }
                         </div>
@@ -481,12 +517,19 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::{
         can_auto_enable_global_follow, can_mutate_global_follow_state, is_editable_target,
-        is_handled_key, search_segment_class, should_restore_focus, wheel_lines_to_jump,
+        is_handled_key, line_decorations_for_row, search_segment_class, should_restore_focus,
+        wheel_lines_to_jump,
     };
     use crate::components::context::SelectionSource;
-    use crate::components::line_decorations::DecorationKind;
+    use crate::components::line_decorations::{DecorationKind, LineDecoration};
+
+    fn decoration(start: usize, end: usize, kind: DecorationKind) -> LineDecoration {
+        LineDecoration { start, end, kind }
+    }
 
     #[test]
     fn handled_keys_include_navigation_and_commands() {
@@ -540,6 +583,29 @@ mod tests {
             search_segment_class(DecorationKind::SearchCurrent),
             "search-match search-match-current"
         );
+    }
+
+    #[test]
+    fn row_decorations_are_cloned_for_original_line_number() {
+        let mut decorations_by_line = HashMap::new();
+        decorations_by_line.insert(42, vec![decoration(0, 3, DecorationKind::SearchMatch)]);
+
+        let decorations = line_decorations_for_row(&decorations_by_line, 42);
+
+        assert_eq!(
+            decorations,
+            vec![decoration(0, 3, DecorationKind::SearchMatch)]
+        );
+    }
+
+    #[test]
+    fn row_decorations_default_to_empty_for_unmatched_original_line_number() {
+        let mut decorations_by_line = HashMap::new();
+        decorations_by_line.insert(7, vec![decoration(0, 3, DecorationKind::SearchCurrent)]);
+
+        let decorations = line_decorations_for_row(&decorations_by_line, 8);
+
+        assert_eq!(decorations, Vec::<LineDecoration>::new());
     }
 
     #[test]
