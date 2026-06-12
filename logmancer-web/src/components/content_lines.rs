@@ -26,6 +26,19 @@ const ARROW_DOWN: &str = "ArrowDown";
 const PAGE_UP: &str = "PageUp";
 const PAGE_DOWN: &str = "PageDown";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TailEndComparison {
+    Inclusive,
+    Strict,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TailNavigationUpdate {
+    DisableTailAndFollow,
+    EnableTail,
+    NoChange,
+}
+
 fn is_handled_key(key: &str) -> bool {
     matches!(
         key,
@@ -55,6 +68,66 @@ fn can_auto_enable_global_follow(selection_source: SelectionSource) -> bool {
 
 fn can_mutate_global_follow_state(selection_source: SelectionSource) -> bool {
     matches!(selection_source, SelectionSource::Main)
+}
+
+fn is_at_end(start_line: usize, page_size: usize, total_lines: usize) -> bool {
+    start_line.saturating_add(page_size) >= total_lines
+}
+
+fn keyboard_target_line(key: &str, start_line: usize, page_size: usize) -> Option<usize> {
+    match key {
+        ARROW_UP => Some(start_line.saturating_sub(SCROLL_LINE_JUMP)),
+        ARROW_DOWN => Some(start_line.saturating_add(SCROLL_LINE_JUMP)),
+        PAGE_UP => Some(start_line.saturating_sub(page_size)),
+        PAGE_DOWN => Some(start_line.saturating_add(page_size)),
+        "g" => Some(0),
+        _ => None,
+    }
+}
+
+fn wheel_target_line(base_line: usize, signed_wheel_lines: i32, max_start_line: usize) -> usize {
+    if signed_wheel_lines < 0 {
+        base_line.saturating_sub(signed_wheel_lines.unsigned_abs() as usize)
+    } else {
+        base_line
+            .saturating_add(signed_wheel_lines as usize)
+            .min(max_start_line)
+    }
+}
+
+fn should_handle_focus_request(
+    request: u64,
+    last_handled_request: u64,
+    active_pane: SelectionSource,
+    selection_source: SelectionSource,
+) -> bool {
+    request != 0
+        && request != last_handled_request
+        && active_pane == selection_source
+        && selection_source == SelectionSource::Main
+}
+
+fn tail_update_for_navigation(
+    current_start_line: usize,
+    new_line: usize,
+    page_size: usize,
+    total_lines: usize,
+    end_comparison: TailEndComparison,
+) -> TailNavigationUpdate {
+    if current_start_line > new_line {
+        return TailNavigationUpdate::DisableTailAndFollow;
+    }
+
+    let reaches_end = match end_comparison {
+        TailEndComparison::Inclusive => new_line.saturating_add(page_size) >= total_lines,
+        TailEndComparison::Strict => new_line.saturating_add(page_size) > total_lines,
+    };
+
+    if reaches_end {
+        TailNavigationUpdate::EnableTail
+    } else {
+        TailNavigationUpdate::NoChange
+    }
 }
 
 fn wheel_lines_to_jump(delta: f64, is_precise_scroll: bool) -> i32 {
@@ -167,10 +240,6 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
     let (last_handled_focus_request, set_last_handled_focus_request) = signal(0_u64);
     let scroll_trace = scroll_trace_enabled();
 
-    let is_at_end = move |result: &PageResult| {
-        result.start_line.saturating_add(page_size.get()) >= result.total_lines
-    };
-
     let update_tail = move |new_line: usize| {
         if !can_mutate_global_follow_state(selection_source) {
             return;
@@ -178,13 +247,23 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 
         set_tail.update_untracked(move |current| {
             let page_result = page_result.get().unwrap();
-            if page_result.start_line > new_line {
-                log!("Updating tail to false");
-                *current = false;
-                set_follow.set(false);
-            } else if new_line.saturating_add(page_size.get()) >= page_result.total_lines {
-                log!("Updating tail to true");
-                *current = true
+            match tail_update_for_navigation(
+                page_result.start_line,
+                new_line,
+                page_size.get(),
+                page_result.total_lines,
+                TailEndComparison::Inclusive,
+            ) {
+                TailNavigationUpdate::DisableTailAndFollow => {
+                    log!("Updating tail to false");
+                    *current = false;
+                    set_follow.set(false);
+                }
+                TailNavigationUpdate::EnableTail => {
+                    log!("Updating tail to true");
+                    *current = true
+                }
+                TailNavigationUpdate::NoChange => {}
             }
         });
     };
@@ -193,43 +272,23 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         let page_result = page_result.get().unwrap();
         log!("Key {} pressed", key);
         match key {
-            ARROW_UP => {
-                let new_line = page_result.start_line.saturating_sub(SCROLL_LINE_JUMP);
-                update_tail(new_line);
-                set_start_line.set(new_line);
+            ARROW_DOWN | PAGE_DOWN
+                if is_at_end(
+                    page_result.start_line,
+                    page_size.get(),
+                    page_result.total_lines,
+                ) && can_auto_enable_global_follow(selection_source) =>
+            {
+                set_tail.set(true);
+                set_follow.set(true);
             }
-            ARROW_DOWN => {
-                if is_at_end(&page_result) {
-                    if can_auto_enable_global_follow(selection_source) {
-                        set_tail.set(true);
-                        set_follow.set(true);
-                    }
-                    return;
+            ARROW_UP | ARROW_DOWN | PAGE_UP | PAGE_DOWN | "g" => {
+                if let Some(new_line) =
+                    keyboard_target_line(key, page_result.start_line, page_size.get())
+                {
+                    update_tail(new_line);
+                    set_start_line.set(new_line);
                 }
-                let new_line = page_result.start_line.saturating_add(SCROLL_LINE_JUMP);
-                update_tail(new_line);
-                set_start_line.set(new_line);
-            }
-            PAGE_UP => {
-                let new_line = page_result.start_line.saturating_sub(page_size.get());
-                update_tail(new_line);
-                set_start_line.set(new_line);
-            }
-            PAGE_DOWN => {
-                if is_at_end(&page_result) {
-                    if can_auto_enable_global_follow(selection_source) {
-                        set_tail.set(true);
-                        set_follow.set(true);
-                    }
-                    return;
-                }
-                let new_line = page_result.start_line.saturating_add(page_size.get());
-                update_tail(new_line);
-                set_start_line.set(new_line);
-            }
-            "g" => {
-                update_tail(0);
-                set_start_line.set(0);
             }
             "G" if can_auto_enable_global_follow(selection_source) => {
                 set_tail.set(true);
@@ -294,7 +353,13 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
             return;
         };
 
-        if signed_wheel_lines > 0 && is_at_end(&current_page_result) {
+        if signed_wheel_lines > 0
+            && is_at_end(
+                current_page_result.start_line,
+                page_size.get(),
+                current_page_result.total_lines,
+            )
+        {
             if can_auto_enable_global_follow(selection_source) {
                 set_tail.set(true);
                 set_follow.set(true);
@@ -308,13 +373,11 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
         let base_line = wheel_target_line
             .get_untracked()
             .unwrap_or(current_page_result.start_line);
-        let target_line = if signed_wheel_lines < 0 {
-            base_line.saturating_sub(signed_wheel_lines.unsigned_abs() as usize)
-        } else {
-            base_line
-                .saturating_add(signed_wheel_lines as usize)
-                .min(max_start_line)
-        };
+        let target_line = crate::components::content_lines::wheel_target_line(
+            base_line,
+            signed_wheel_lines,
+            max_start_line,
+        );
         set_wheel_target_line.set(Some(target_line));
         scroll_trace!(
             scroll_trace,
@@ -361,13 +424,19 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                         );
                         if can_mutate_global_follow_state(selection_source) {
                             set_tail.update_untracked(move |current| {
-                                if current_page_result.start_line > new_line {
-                                    *current = false;
-                                    set_follow.set(false);
-                                } else if new_line + page_size.get()
-                                    > current_page_result.total_lines
-                                {
-                                    *current = true
+                                match tail_update_for_navigation(
+                                    current_page_result.start_line,
+                                    new_line,
+                                    page_size.get(),
+                                    current_page_result.total_lines,
+                                    TailEndComparison::Strict,
+                                ) {
+                                    TailNavigationUpdate::DisableTailAndFollow => {
+                                        *current = false;
+                                        set_follow.set(false);
+                                    }
+                                    TailNavigationUpdate::EnableTail => *current = true,
+                                    TailNavigationUpdate::NoChange => {}
                                 }
                             });
                         }
@@ -434,13 +503,12 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
 
     Effect::new(move || {
         let request = focus_request.get();
-        if request == 0 || request == last_handled_focus_request.get_untracked() {
-            return;
-        }
-
-        if active_pane.get_untracked() != selection_source
-            || selection_source != SelectionSource::Main
-        {
+        if !should_handle_focus_request(
+            request,
+            last_handled_focus_request.get_untracked(),
+            active_pane.get_untracked(),
+            selection_source,
+        ) {
             return;
         }
 
@@ -520,9 +588,11 @@ mod tests {
     use std::collections::HashMap;
 
     use super::{
-        can_auto_enable_global_follow, can_mutate_global_follow_state, is_editable_target,
-        is_handled_key, line_decorations_for_row, search_segment_class, should_restore_focus,
-        wheel_lines_to_jump,
+        can_auto_enable_global_follow, can_mutate_global_follow_state, is_at_end,
+        is_editable_target, is_handled_key, keyboard_target_line, line_decorations_for_row,
+        search_segment_class, should_handle_focus_request, should_restore_focus,
+        tail_update_for_navigation, wheel_lines_to_jump, wheel_target_line, TailEndComparison,
+        TailNavigationUpdate, ARROW_DOWN, ARROW_UP, PAGE_DOWN, PAGE_UP,
     };
     use crate::components::context::SelectionSource;
     use crate::components::line_decorations::{DecorationKind, LineDecoration};
@@ -618,5 +688,103 @@ mod tests {
     #[test]
     fn non_precise_wheel_scroll_uses_three_lines() {
         assert_eq!(wheel_lines_to_jump(1.0, false), 3);
+    }
+
+    #[test]
+    fn page_end_detection_uses_inclusive_comparison() {
+        assert!(is_at_end(90, 10, 100));
+        assert!(is_at_end(100, 10, 100));
+        assert!(!is_at_end(89, 10, 100));
+    }
+
+    #[test]
+    fn keyboard_targets_preserve_navigation_math() {
+        assert_eq!(keyboard_target_line(ARROW_UP, 1, 20), Some(0));
+        assert_eq!(keyboard_target_line(PAGE_UP, 10, 20), Some(0));
+        assert_eq!(keyboard_target_line(ARROW_DOWN, 10, 20), Some(11));
+        assert_eq!(keyboard_target_line(PAGE_DOWN, 10, 20), Some(30));
+        assert_eq!(keyboard_target_line("g", 10, 20), Some(0));
+    }
+
+    #[test]
+    fn keyboard_targets_exclude_commands_and_unhandled_keys() {
+        assert_eq!(keyboard_target_line("G", 10, 20), None);
+        assert_eq!(keyboard_target_line("f", 10, 20), None);
+        assert_eq!(keyboard_target_line("F", 10, 20), None);
+        assert_eq!(keyboard_target_line("Enter", 10, 20), None);
+    }
+
+    #[test]
+    fn wheel_target_uses_caller_base_and_clamps() {
+        assert_eq!(wheel_target_line(50, -12, 100), 38);
+        assert_eq!(wheel_target_line(5, -12, 100), 0);
+        assert_eq!(wheel_target_line(95, 12, 100), 100);
+        assert_eq!(wheel_target_line(25, 12, 100), 37);
+    }
+
+    #[test]
+    fn focus_request_requires_new_nonzero_main_request() {
+        assert!(should_handle_focus_request(
+            2,
+            1,
+            SelectionSource::Main,
+            SelectionSource::Main,
+        ));
+        assert!(!should_handle_focus_request(
+            0,
+            1,
+            SelectionSource::Main,
+            SelectionSource::Main,
+        ));
+        assert!(!should_handle_focus_request(
+            2,
+            2,
+            SelectionSource::Main,
+            SelectionSource::Main,
+        ));
+        assert!(!should_handle_focus_request(
+            2,
+            1,
+            SelectionSource::Filter,
+            SelectionSource::Main,
+        ));
+        assert!(!should_handle_focus_request(
+            2,
+            1,
+            SelectionSource::Main,
+            SelectionSource::Filter,
+        ));
+    }
+
+    #[test]
+    fn tail_update_disables_tail_and_follow_on_backward_navigation() {
+        assert_eq!(
+            tail_update_for_navigation(50, 49, 10, 100, TailEndComparison::Inclusive),
+            TailNavigationUpdate::DisableTailAndFollow
+        );
+        assert_eq!(
+            tail_update_for_navigation(50, 49, 10, 100, TailEndComparison::Strict),
+            TailNavigationUpdate::DisableTailAndFollow
+        );
+    }
+
+    #[test]
+    fn tail_update_preserves_inclusive_and_strict_end_semantics() {
+        assert_eq!(
+            tail_update_for_navigation(80, 90, 10, 100, TailEndComparison::Inclusive),
+            TailNavigationUpdate::EnableTail
+        );
+        assert_eq!(
+            tail_update_for_navigation(80, 90, 10, 100, TailEndComparison::Strict),
+            TailNavigationUpdate::NoChange
+        );
+        assert_eq!(
+            tail_update_for_navigation(80, 91, 10, 100, TailEndComparison::Strict),
+            TailNavigationUpdate::EnableTail
+        );
+        assert_eq!(
+            tail_update_for_navigation(80, 89, 10, 100, TailEndComparison::Inclusive),
+            TailNavigationUpdate::NoChange
+        );
     }
 }
