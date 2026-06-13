@@ -30,6 +30,37 @@ fn reveal_start_line_for_selected_line(selected_original_line: usize, page_size:
     selected_zero_based.saturating_sub(center_offset)
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum SearchNavigationDirection {
+    Next,
+    Previous,
+}
+
+fn selected_match_line_from_page(page: &PageResult) -> Option<usize> {
+    page.search
+        .as_ref()
+        .and_then(|search| search.current.as_ref().or(search.first.as_ref()))
+        .map(|search_match| search_match.line_index + 1)
+}
+
+fn search_navigation_pending_status(direction: SearchNavigationDirection) -> &'static str {
+    match direction {
+        SearchNavigationDirection::Next => "Going to next match...",
+        SearchNavigationDirection::Previous => "Going to previous match...",
+    }
+}
+
+fn search_navigation_unavailable_status(direction: SearchNavigationDirection) -> &'static str {
+    match direction {
+        SearchNavigationDirection::Next => "Next match unavailable",
+        SearchNavigationDirection::Previous => "Previous match unavailable",
+    }
+}
+
+fn should_handle_search_request(request: u64, handled: u64, in_flight: bool) -> bool {
+    request != 0 && handled < request && !in_flight
+}
+
 fn apply_search_page_result(
     page: PageResult,
     set_tail: WriteSignal<bool>,
@@ -43,14 +74,8 @@ fn apply_search_page_result(
     set_start_line.set(page.start_line);
     set_start_line.notify();
 
-    let selected_match = page
-        .search
-        .as_ref()
-        .and_then(|search| search.current.as_ref().or(search.first.as_ref()))
-        .cloned();
-
     set_selected_line_source.set(SelectionSource::Main);
-    set_selected_original_line.set(selected_match.map(|search_match| search_match.line_index + 1));
+    set_selected_original_line.set(selected_match_line_from_page(&page));
 }
 
 #[component]
@@ -177,23 +202,18 @@ pub fn MainPane() -> impl IntoView {
         });
     };
 
-    let navigate_search = move |navigate_previous: bool| {
+    let navigate_search = move |direction: SearchNavigationDirection| {
         let file_id = file_id.get_untracked();
         let max_lines = page_size.get_untracked();
 
         set_search_navigation_in_flight.set(true);
 
-        set_search_status.set(if navigate_previous {
-            "Going to previous match...".to_string()
-        } else {
-            "Going to next match...".to_string()
-        });
+        set_search_status.set(search_navigation_pending_status(direction).to_string());
 
         spawn_local(async move {
-            let result = if navigate_previous {
-                search_previous(file_id, max_lines).await
-            } else {
-                search_next(file_id, max_lines).await
+            let result = match direction {
+                SearchNavigationDirection::Next => search_next(file_id, max_lines).await,
+                SearchNavigationDirection::Previous => search_previous(file_id, max_lines).await,
             };
 
             match result {
@@ -209,11 +229,8 @@ pub fn MainPane() -> impl IntoView {
                     );
                 }
                 Err(_) => {
-                    set_search_status.set(if navigate_previous {
-                        "Previous match unavailable".to_string()
-                    } else {
-                        "Next match unavailable".to_string()
-                    });
+                    set_search_status
+                        .set(search_navigation_unavailable_status(direction).to_string());
                 }
             }
 
@@ -262,12 +279,16 @@ pub fn MainPane() -> impl IntoView {
             return;
         }
 
-        if search_navigation_in_flight.get() {
+        if !should_handle_search_request(
+            request,
+            handled_request,
+            search_navigation_in_flight.get(),
+        ) {
             return;
         }
 
         set_handled_next_request.update(|handled| *handled = handled.saturating_add(1));
-        navigate_search(false);
+        navigate_search(SearchNavigationDirection::Next);
     });
 
     Effect::new(move || {
@@ -278,12 +299,16 @@ pub fn MainPane() -> impl IntoView {
             return;
         }
 
-        if search_navigation_in_flight.get() {
+        if !should_handle_search_request(
+            request,
+            handled_request,
+            search_navigation_in_flight.get(),
+        ) {
             return;
         }
 
         set_handled_previous_request.update(|handled| *handled = handled.saturating_add(1));
-        navigate_search(true);
+        navigate_search(SearchNavigationDirection::Previous);
     });
 
     Effect::new(move || {
@@ -327,7 +352,46 @@ pub fn MainPane() -> impl IntoView {
 
 #[cfg(test)]
 mod tests {
-    use super::reveal_start_line_for_selected_line;
+    use super::{
+        reveal_start_line_for_selected_line, search_navigation_pending_status,
+        search_navigation_unavailable_status, selected_match_line_from_page,
+        should_handle_search_request, SearchNavigationDirection,
+    };
+    use logmancer_core::{PageResult, PageSearchResult, SearchMatch};
+
+    fn search_match(line_index: usize) -> SearchMatch {
+        SearchMatch {
+            line_index,
+            start: 0,
+            end: 3,
+            ordinal: 0,
+        }
+    }
+
+    fn page_with_search(search: Option<PageSearchResult>) -> PageResult {
+        PageResult {
+            lines: Vec::new(),
+            start_line: 0,
+            total_lines: 0,
+            indexing_progress: 1.0,
+            search,
+        }
+    }
+
+    fn page_search_result(
+        first: Option<SearchMatch>,
+        current: Option<SearchMatch>,
+    ) -> PageSearchResult {
+        PageSearchResult {
+            query: "error".to_string(),
+            total_matches: 2,
+            total_matches_final: true,
+            is_indexing: false,
+            first,
+            current,
+            page_matches: Vec::new(),
+        }
+    }
 
     #[test]
     fn reveal_line_at_top_clamps_to_zero() {
@@ -343,5 +407,75 @@ mod tests {
     fn reveal_handles_even_page_size_off_by_one() {
         assert_eq!(reveal_start_line_for_selected_line(26, 50), 0);
         assert_eq!(reveal_start_line_for_selected_line(27, 50), 1);
+    }
+
+    #[test]
+    fn selected_match_prefers_current_over_first() {
+        let page = page_with_search(Some(page_search_result(
+            Some(search_match(4)),
+            Some(search_match(9)),
+        )));
+
+        assert_eq!(selected_match_line_from_page(&page), Some(10));
+    }
+
+    #[test]
+    fn selected_match_uses_first_when_current_is_absent() {
+        let page = page_with_search(Some(page_search_result(Some(search_match(4)), None)));
+
+        assert_eq!(selected_match_line_from_page(&page), Some(5));
+    }
+
+    #[test]
+    fn selected_match_converts_zero_based_index_to_one_based_line() {
+        let page = page_with_search(Some(page_search_result(None, Some(search_match(0)))));
+
+        assert_eq!(selected_match_line_from_page(&page), Some(1));
+    }
+
+    #[test]
+    fn selected_match_returns_none_without_search_or_match() {
+        let page_without_search = page_with_search(None);
+        let page_without_match = page_with_search(Some(page_search_result(None, None)));
+
+        assert_eq!(selected_match_line_from_page(&page_without_search), None);
+        assert_eq!(selected_match_line_from_page(&page_without_match), None);
+    }
+
+    #[test]
+    fn search_navigation_pending_status_matches_direction() {
+        assert_eq!(
+            search_navigation_pending_status(SearchNavigationDirection::Next),
+            "Going to next match..."
+        );
+        assert_eq!(
+            search_navigation_pending_status(SearchNavigationDirection::Previous),
+            "Going to previous match..."
+        );
+    }
+
+    #[test]
+    fn search_navigation_unavailable_status_matches_direction() {
+        assert_eq!(
+            search_navigation_unavailable_status(SearchNavigationDirection::Next),
+            "Next match unavailable"
+        );
+        assert_eq!(
+            search_navigation_unavailable_status(SearchNavigationDirection::Previous),
+            "Previous match unavailable"
+        );
+    }
+
+    #[test]
+    fn should_handle_search_request_ignores_zero_stale_and_in_flight_requests() {
+        assert!(!should_handle_search_request(0, 0, false));
+        assert!(!should_handle_search_request(3, 3, false));
+        assert!(!should_handle_search_request(3, 4, false));
+        assert!(!should_handle_search_request(4, 3, true));
+    }
+
+    #[test]
+    fn should_handle_search_request_accepts_fresh_request_when_idle() {
+        assert!(should_handle_search_request(4, 3, false));
     }
 }
