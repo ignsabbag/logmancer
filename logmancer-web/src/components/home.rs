@@ -1,4 +1,4 @@
-use crate::components::async_functions::{fetch_server_browser_status, upload_local_file};
+use crate::browser_api_client::{fetch_server_browser_status, upload_local_file};
 use crate::components::ServerFileSpotlight;
 use leptos::logging::log;
 use leptos::prelude::*;

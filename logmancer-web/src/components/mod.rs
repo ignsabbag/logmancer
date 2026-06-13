@@ -1,5 +1,4 @@
 mod app;
-mod async_functions;
 mod auto_scroll_status;
 mod content_lines;
 mod content_scroll;
@@ -8,6 +7,7 @@ mod diagnostics;
 mod filter_pane;
 mod home;
 mod layout;
+pub(crate) mod line_decorations;
 mod log_view;
 mod main_pane;
 mod pane_index_progress;

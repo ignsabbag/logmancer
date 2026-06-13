@@ -22,6 +22,11 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Web/desktop log scrolling now uses gentler increments for arrow keys, native scrollbar movement, and mouse wheel input.
 - Web/desktop filter controls now include a visible Search button and use a tighter monospace presentation.
 - Web/desktop auto-scroll status is more compact and highlights the active state.
+- Refactored web viewer internals to separate line decoration, line rendering, navigation decisions, main-pane search helpers, and browser API client code for smaller reviewable responsibilities.
+
+### Fixed
+
+- Web/desktop bottom search panel now left-aligns the search input and lets it expand across the available width.
 
 ## [0.2.0] - 2026-05-15
 

@@ -1,5 +1,5 @@
 use crate::api::commons::ServerBrowserEntry;
-use crate::components::async_functions::{fetch_server_browser_list, open_server_browser_file};
+use crate::browser_api_client::{fetch_server_browser_list, open_server_browser_file};
 use leptos::html;
 use leptos::logging::log;
 use leptos::prelude::*;
