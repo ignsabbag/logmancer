@@ -1,4 +1,4 @@
-use crate::components::async_functions::{
+use crate::browser_api_client::{
     apply_search, clear_search, fetch_page, search_next, search_previous,
 };
 use crate::components::auto_scroll_status::AutoScrollStatus;

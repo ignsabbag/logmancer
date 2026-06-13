@@ -1,5 +1,4 @@
 mod app;
-mod async_functions;
 mod auto_scroll_status;
 mod content_lines;
 mod content_scroll;

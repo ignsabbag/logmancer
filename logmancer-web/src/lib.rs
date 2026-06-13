@@ -2,6 +2,7 @@
 
 pub mod api;
 pub mod app;
+pub(crate) mod browser_api_client;
 pub mod components;
 
 #[cfg(feature = "hydrate")]

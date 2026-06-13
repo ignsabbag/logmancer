@@ -1,4 +1,4 @@
-use crate::components::async_functions::{apply_filter as apply_filter_fetch, fetch_filter_page};
+use crate::browser_api_client::{apply_filter as apply_filter_fetch, fetch_filter_page};
 use crate::components::content_lines::ContentLines;
 use crate::components::content_scroll::ContentScroll;
 use crate::components::context::{
