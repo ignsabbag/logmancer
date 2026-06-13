@@ -34,6 +34,7 @@ Current development version: `0.3.0`.
 * **Optimized file indexing** for fast navigation.
 * **`less`-style navigation** with keyboard shortcuts such as `g`, `G`, page movement, and follow mode.
 * **Regex-based filtering** in web/desktop with results navigable in a separate panel.
+* **Search across logs** with `/` or `Ctrl+F`, match highlighting, and `n` / `N` navigation where supported.
 * **TUI, web, and desktop frontends** built on a shared core.
 
 *Note: The project is in its early stages of development.*
@@ -115,6 +116,8 @@ cargo tauri dev
 * **g**: Go to beginning of file.
 * **G**: Go to end of file.
 * **f** / **F**: Toggle follow mode (like `tail -f`), only works at EOF.
+* **/** / **Ctrl+F**: Open search in web/desktop and supported terminal views.
+* **n** / **N**: Navigate to the next or previous search match.
 * **q**: Quit (CLI only).
 
 ---
