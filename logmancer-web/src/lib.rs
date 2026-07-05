@@ -4,6 +4,7 @@ pub mod api;
 pub mod app;
 pub(crate) mod browser_api_client;
 pub mod components;
+pub mod file_opening;
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]

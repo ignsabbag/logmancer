@@ -15,6 +15,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - TUI search prompt opened with `/`, including submit/cancel handling and `n`/`N` next/previous match navigation using core behavior.
 - Search match highlighting across Web/Desktop main and filtered views plus TUI visible lines, with a distinct current-match state (#24).
 - Search status display across TUI and Web/Desktop now shows the active query, current match position, total matches, and no-match feedback (#25).
+- Desktop Home can open local log files through a native file picker without requiring `LOGMANCER_SERVER_FILE_ROOT` (#61).
 
 ### Changed
 

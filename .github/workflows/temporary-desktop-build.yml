@@ -1,0 +1,64 @@
+name: Temporary desktop diagnostics build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-desktop-binary:
+    name: Build Linux desktop binary only
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out current branch
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            curl \
+            file \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf \
+            pkg-config
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache Cargo build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Install cargo-leptos and Tauri CLI
+        run: |
+          cargo install cargo-leptos --locked
+          cargo install tauri-cli --version '^2' --locked
+
+      - name: Build temporary desktop diagnostic binary
+        working-directory: logmancer-desktop
+        env:
+          LEPTOS_OUTPUT_NAME: logmancer-web
+        # Temporary diagnostics workflow: intentionally no tests, no clippy, and no bundle generation.
+        # Tauri still runs the configured Leptos beforeBuildCommand so assets are fresh.
+        # `--no-bundle` keeps the build lighter and uploads the release binary directly for inspection.
+        run: cargo tauri build --no-bundle
+
+      - name: Upload Linux desktop binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: temporary-logmancer-linux-desktop-binary
+          if-no-files-found: error
+          path: |
+            target/release/logmancer-desktop
+            target/site/**

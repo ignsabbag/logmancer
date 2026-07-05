@@ -48,3 +48,27 @@ pub fn api_routes_with_registry<T>(registry: Arc<LogRegistry>) -> Router<T> {
 pub fn api_routes<T>() -> Router<T> {
     api_routes_with_registry(Arc::new(LogRegistry::new()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Method, Request, StatusCode};
+    use tower::ServiceExt;
+
+    #[tokio::test]
+    async fn normal_web_router_does_not_register_open_server_file() {
+        let response = api_routes_with_registry::<()>(Arc::new(LogRegistry::new()))
+            .oneshot(
+                Request::builder()
+                    .method(Method::POST)
+                    .uri("/open-server-file")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+}

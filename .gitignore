@@ -16,7 +16,10 @@
 *.iml
 
 *.log
+*.log.txt
 *.out
+
+/.codegraph/
 
 /tests/output/
 **/examples/**/output/
