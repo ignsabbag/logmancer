@@ -2,6 +2,9 @@ name: Temporary desktop diagnostics build
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/desktop-native-file-opening-diagnostics
 
 permissions:
   contents: read
