@@ -80,18 +80,12 @@ Desktop direct open MUST NOT create a generally exposed arbitrary path endpoint 
 
 ### Requirement: Desktop Drag And Drop Slice
 
-Desktop local drag/drop MAY be deferred. If implemented, it MUST use the desktop-native file-opening capability and MUST NOT restore browser-style upload UI on Desktop Home.
+Desktop local drag/drop MUST use the desktop-native file-opening capability and MUST NOT restore browser-style upload UI on Desktop Home.
 
-#### Scenario: Deferred desktop drag/drop remains absent
+#### Scenario: Desktop drag/drop uses native boundary
 
-- GIVEN the first desktop-native opening slice is implemented
-- WHEN the user opens Desktop Home
-- THEN drag/drop for local desktop paths MAY be absent
-- AND direct desktop-native file opening MUST still be available
-
-#### Scenario: Future desktop drag/drop uses native boundary
-
-- GIVEN desktop local drag/drop is implemented later
+- GIVEN Logmancer is running in the desktop shell
 - WHEN the user drops a local file path into the desktop shell
 - THEN it MUST open through the desktop-native file-opening capability
 - AND it MUST preserve the registry/session consistency required for `/log/{file_id}`
+- AND the desktop window MUST navigate to `/log/{file_id}` after a successful drop open

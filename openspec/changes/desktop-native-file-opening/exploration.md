@@ -1,61 +1,53 @@
-## Exploration: desktop-native-file-opening
+## Exploration: desktop-native-file-opening drag/drop slice
 
 ### Current State
-`logmancer-web/src/components/home.rs` is the shared Home screen for browser and desktop. It always renders browser-style local file upload, drag/drop upload, a server-browser divider, and the `ServerFileSpotlight` entry point. Upload posts a browser `File` to `/api/upload-file`; drag/drop also uses that upload path.
+Slice 1 is implemented around a capability boundary. Web runtime exposes browser upload and server browser; desktop runtime hides both and exposes `desktop_native_open`. `Home` still has DOM `dragover`/`drop` handlers, but on desktop the current drop handler calls `open_native_file.run(())`, which opens the native picker rather than opening the dropped path. Web drag/drop continues to use browser `DataTransfer.files` and `upload_local_file`.
 
-Server-side browsing is intentionally root-scoped. `logmancer-web/src/api/server_browser.rs` enables browsing only when `LOGMANCER_SERVER_FILE_ROOT` resolves to a valid directory, validates relative path tokens against that root, rejects escapes, and checks selected files are text-readable before opening them through `LogRegistry`.
+Desktop native opening already uses the safe path: `logmancer-web/src/file_opening.rs::open_native_log_file()` invokes Tauri command `open_native_log_file`; `logmancer-desktop/src/lib.rs` resolves the selected path and calls `open_selected_log_file`, which registers the path through the shared `Arc<LogRegistry>` used by `start_leptos_with_registry`.
 
-`logmancer-desktop/src/lib.rs` starts a Tauri shell, creates a shared `LogRegistry`, starts the embedded Leptos SSR server, and navigates the main window to that local server. It reuses the same web Home route, so desktop currently shows upload UI and still depends on `LOGMANCER_SERVER_FILE_ROOT` for browsing. The desktop crate has `tauri-plugin-opener`, but no native dialog plugin or file-opening command.
-
-There is an unused `logmancer-web/src/api/open_server_file.rs` handler and `OpenServerFileRequest` DTO that can open an arbitrary path through `LogRegistry`, but the route is not registered in `api_routes_with_registry`. Exposing that handler broadly would conflict with the accepted root-scoped server-browser ADR unless it is constrained to a desktop-only/native capability boundary.
+Tauri v2 exposes local file drops as native paths. On the frontend, `getCurrentWebview().onDragDropEvent(...)` or `getCurrentWindow().onDragDropEvent(...)` receives payloads with `type: 'over' | 'drop' | 'cancel'`; `drop` includes `paths`. On the Rust side, `WindowEvent::DragDrop(DragDropEvent)` includes `Enter { paths, position }`, `Drop { paths, position }`, `Over { position }`, and `Leave`. Docs.rs shows these APIs for Linux, Windows, and macOS targets; Windows also has a low-level `drag_and_drop(bool)` window builder knob, but default Tauri webview file-drop support should be verified in packaged binaries.
 
 OpenSpec note: `openspec/config.yaml` and main `openspec/specs/` are not present in this working tree, so this exploration follows the standard change-folder convention only.
 
 ### Affected Areas
-- `logmancer-web/src/components/home.rs` — current shared Home UX mixes browser upload, desktop needs, and server-browser status in one component.
-- `logmancer-web/src/browser_api_client.rs` — existing browser HTTP client owns upload and server-browser calls; likely place for a small runtime-capability/status client if served over HTTP.
-- `logmancer-web/src/api/config.rs` — route/state boundary for any server-side capability endpoint or desktop-only open route.
-- `logmancer-web/src/api/server_browser.rs` — current server browser must remain root-scoped for web deployments.
-- `logmancer-web/src/api/open_server_file.rs` — currently unused direct path opener; tempting reuse point but unsafe as a general web route.
-- `logmancer-desktop/src/lib.rs` — Tauri setup would add native dialog/open integration, plugin initialization, commands, or capability injection.
-- `logmancer-desktop/Cargo.toml` — would need `tauri-plugin-dialog` for native file picking if using the plugin.
-- `logmancer-desktop/capabilities/default.json` — would need dialog permissions and possibly custom command permissions.
-- `docs/adr/0001-server-file-browser-root-scoped.md` — frames the security constraint for server browsing and should not be weakened by web routes.
+- `logmancer-web/src/components/home.rs` — should stop treating desktop DOM drop as “open picker” and instead use a desktop-native drop path listener while leaving web browser drop/upload unchanged.
+- `logmancer-web/src/file_opening.rs` — likely home for a narrow helper that invokes a new Tauri command with an explicit path, reusing the native-open boundary instead of upload.
+- `logmancer-desktop/src/lib.rs` — should add a command such as `open_native_log_path(path: String)` that delegates to `open_selected_log_file` / `LogRegistry`, plus diagnostic logging for dropped paths.
+- `logmancer-desktop/capabilities/default.json` — already has `core:default` and dialog permission; likely no extra permission is needed for drag/drop events themselves, but a new custom command permission may be generated/required by Tauri and must be checked after build/schema generation.
+- `openspec/changes/desktop-native-file-opening/tasks.md` — already identifies desktop drag/drop as PR/slice 2; implementation tasks may need a small follow-up update during planning/apply.
 
 ### Approaches
-1. **Register direct `/api/open-server-file` for desktop and hide upload with a runtime mode flag** — Add a server route that opens absolute paths and expose it only when the embedded desktop server is running.
-   - Pros: Reuses `LogRegistry` and existing HTTP/navigation flow; minimal frontend invocation surface; direct native dialog can return a path and the browser client can post it.
-   - Cons: Easy to accidentally expose arbitrary filesystem access in web/server mode; needs a reliable desktop-only state/config gate; still couples desktop native selection to web API routes.
+1. **Frontend Tauri drag/drop listener + path command** — In desktop/hydrate runtime, attach `onDragDropEvent`, take the first dropped path, and invoke a command that opens that path through the shared registry.
+   - Pros: Directly uses documented Tauri v2 webview API; keeps UI feedback in `Home`; avoids restoring browser upload on desktop; reuses existing registry open flow with a small command wrapper.
+   - Cons: Requires JS interop from Rust/WASM for an API that is normally consumed from TypeScript; lifecycle cleanup/unlisten must be handled carefully.
    - Effort: Medium
 
-2. **Tauri command owns native dialog and registry open, Home consumes runtime file-opening capabilities** — Desktop registers a command such as `open_native_file`, backed by Tauri dialog selection and the same desktop `LogRegistry`; web Home renders available actions from a capability/strategy boundary instead of hard-coded platform checks.
-   - Pros: Keeps native file access inside Tauri capability permissions; avoids enabling arbitrary path opening in normal web deployments; cleanly separates browser upload, server browser, and desktop native open strategies; aligns with the request to avoid scattered `if desktop` checks.
-   - Cons: Requires wiring the web WASM side to Tauri IPC and preserving SSR/browser builds; the `LogRegistry` is currently owned by the embedded server task, so desktop command and server must share it deliberately.
+2. **Rust window event handler opens dropped paths** — Handle `WindowEvent::DragDrop(DragDropEvent::Drop { paths, .. })` in desktop Rust and navigate/emit result to the webview.
+   - Pros: Strong typed access to `PathBuf`; no frontend JS wrapper for drag/drop payload parsing.
+   - Cons: More coupling between desktop shell and web navigation/error display; harder to reuse Home loading/error state; needs a frontend notification path for success/failure.
    - Effort: Medium-High
 
-3. **Make desktop set `LOGMANCER_SERVER_FILE_ROOT` automatically and keep current server browser** — On startup, desktop configures the server browser root to a broad user directory and hides upload.
-   - Pros: Small conceptual change; reuses the existing Spotlight browser and root-bound validation.
-   - Cons: Does not provide a native file dialog; still requires a configured root, just implicitly; broad roots weaken the safety and UX intent; does not solve direct local opening well.
-   - Effort: Low-Medium
-
-4. **Use upload path for desktop drag/drop/direct selection** — Keep browser `File` upload for desktop local files and only alter labels/visibility.
-   - Pros: Very small UI change; drag/drop already works as a browser file drop.
-   - Cons: Still copies the file through multipart upload, does not feel native, keeps unnecessary browser upload machinery in desktop, and does not support direct OS file opening without upload.
+3. **Keep current desktop drop behavior as picker open** — Treat desktop drop as another way to open the native picker.
+   - Pros: Almost no code change.
+   - Cons: Violates user intent: dropped file path is ignored; diagnostic builds would not prove real native path drop.
    - Effort: Low
 
 ### Recommendation
-Use Approach 2 as the design target, with runtime capabilities as the boundary: Home should ask what file-opening strategies are available and render browser upload, server browser, or desktop native open based on those capabilities. The web/browser deployment keeps upload and current root-scoped server browser behavior. The desktop deployment hides upload and exposes a native `Open File` action backed by Tauri dialog permissions and the shared desktop `LogRegistry`.
+Use Approach 1. Add a desktop-only Tauri drag/drop listener from the existing Home/file-opening boundary, and route the dropped path into a new Tauri command that delegates to the same `open_selected_log_file` / shared `LogRegistry` path used by picker open. Keep web DOM drag/drop unchanged: normal web runtime continues to read `DataTransfer.files` and upload through `/api/upload-file`.
 
-Treat local file drag/drop as a second slice. The first slice should establish the strategy boundary and direct native open path; the second can map desktop drag/drop into the same native-open strategy if Tauri/webview drag-drop APIs provide stable paths without falling back to multipart upload.
-
-Do not make `/api/open-server-file` generally available for web. If it is reused, gate it behind explicit desktop runtime state and keep it unavailable in normal `logmancer-web` server mode; otherwise prefer a Tauri command so arbitrary path access remains within desktop IPC/capability permissions.
+Minimal implementation plan:
+1. Add `open_native_log_path(path: String) -> Result<String, String>` in `logmancer-desktop/src/lib.rs`, implemented via `open_selected_log_file(state.registry.as_ref(), Some(PathBuf::from(path)))` and returning the `file_id`.
+2. Add a hydrate-only helper in `logmancer-web/src/file_opening.rs` to listen for Tauri drag/drop events and invoke the new command on `drop` payload paths; keep it inert outside desktop runtime.
+3. Wire Home desktop drop state to that helper; for web runtime, preserve existing `DataTransfer.files` upload behavior.
+4. Log diagnostics at each boundary: event type, path count, selected first path basename/path debug as acceptable for diagnostic builds, command invocation, registry success/failure, and navigation target file_id.
+5. Keep implementation within the review budget by avoiding UI redesign and not touching upload/server-browser behavior.
 
 ### Risks
-- Tauri IPC from a Leptos app served from `http://127.0.0.1:{port}` may need capability configuration attention because the desktop window navigates to a local HTTP URL rather than bundled static assets.
-- Sharing `LogRegistry` between the embedded server and Tauri commands must avoid creating a second registry; otherwise the command could open a file ID that the web route cannot read.
-- Exposing arbitrary path opening as an HTTP endpoint would be a security regression for web/server deployments if the gate is wrong.
-- Desktop drag/drop may surface browser `File` objects rather than filesystem paths; path-based native drop should be validated against Tauri v2 capabilities before committing to that slice.
-- Hiding upload in desktop should not remove browser upload behavior from web Home or break existing `/api/upload-file` support.
+- Tauri path payload availability must be proven with GitHub-built Linux and Windows binaries, not only local dev, because drag/drop behavior can vary by webview/packaging/desktop environment.
+- The remote local HTTP origin (`http://127.0.0.1:*`) must still be allowed to use Tauri APIs; direct picker already exercises IPC, but drag/drop event delivery should be verified separately.
+- Capability generation may require a custom command permission for `open_native_log_path`; drag/drop event listening itself appears to be core API rather than plugin-scoped permission, but this must be confirmed by build output and generated schema.
+- Multiple-file drops need an explicit first-file-only decision or rejection; directories should fail cleanly through `LogRegistry::open_file` with a user-visible error.
+- Logging full local paths is useful for diagnostic binaries but can leak sensitive paths; use targeted diagnostics and avoid broad permanent noisy logging.
 
 ### Ready for Proposal
-Yes. The proposal should define a two-slice change: first introduce a runtime file-opening capability/strategy boundary and desktop native direct open; then add desktop local drag/drop if the Tauri path-drop behavior is confirmed. It should explicitly preserve web upload, preserve root-scoped server browsing, and avoid broad platform checks scattered through Home.
+Yes. This is ready for slice-2 apply planning: implement desktop native path drag/drop through Tauri v2 `onDragDropEvent` or equivalent Rust `WindowEvent::DragDrop`, reuse `LogRegistry`, preserve web upload drag/drop, and require GitHub-built Linux/Windows diagnostics before considering the slice fully proven.

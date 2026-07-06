@@ -165,7 +165,7 @@ pub fn Home() -> impl IntoView {
             .get_untracked()
             .desktop_native_open
         {
-            open_native_file.run(());
+            log!("Desktop DOM drop ignored; native Tauri drop listener handles file paths");
             return;
         }
 
@@ -212,7 +212,7 @@ pub fn Home() -> impl IntoView {
                         <p class="home-dropzone-subtitle">
                             {move || {
                                 if file_opening_capabilities.get().desktop_native_open {
-                                    "Choose a file from this computer with the native desktop picker"
+                                    "Drop a local file here, or choose one with the native desktop picker"
                                 } else {
                                     "or choose one manually to upload it"
                                 }

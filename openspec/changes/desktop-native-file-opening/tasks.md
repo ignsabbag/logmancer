@@ -50,3 +50,16 @@ Chain strategy: pending
 
 - [x] 4.1 Update `CHANGELOG.md` under `[Unreleased]` because desktop native opening is user-facing.
 - [x] 4.2 Leave desktop drag/drop as deferred unless Tauri path-drop behavior is proven safe in the same apply window.
+
+## Phase 5: Desktop Native Drag/Drop Slice
+
+- [x] 5.1 Add a desktop-only native drop path command that reuses the shared `LogRegistry::open_file` path used by the native picker.
+- [x] 5.2 Listen for Tauri webview drag/drop path events from Home/file-opening boundary without restoring browser upload UI on desktop.
+- [x] 5.3 Navigate the existing desktop window to `/log/{file_id}` after a successful dropped-path open.
+- [x] 5.4 Preserve web drag/drop upload and the desktop picker button behavior.
+- [x] 5.5 Add focused diagnostics that log event type/count/status without permanently logging full local paths.
+
+## Review Follow-up Risks
+
+- Direct `Home` DOM drag/drop behavior is not unit-tested because Leptos DOM drag/drop requires a browser/webview test harness. The browser upload path remains unchanged, and focused unit tests cover the runtime capability mapping plus first-path desktop drop selection outside the DOM.
+- The native dropped-path IPC command is covered through a helper that reuses `LogRegistry::open_file` and rejects empty paths; the Tauri webview permission boundary is verified as static capability configuration without adding an arbitrary-path HTTP endpoint.
