@@ -6,6 +6,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-07
+
 ### Added
 
 - Shared core search engine with reusable `PageResult` search metadata (`PageSearchResult` + page-scoped match spans with multiple occurrences per line), less-style wrap navigation (`next`/`previous`), and stable match identity for frontend adapters.
@@ -74,6 +76,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Web follow mode works, but does not yet expose a clear visual indicator.
 - Search, visual rules, structured parsing, and multi-file workspace improvements are planned but not part of `0.1.0`.
 
-[Unreleased]: https://github.com/ignsabbag/logmancer/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ignsabbag/logmancer/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/ignsabbag/logmancer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ignsabbag/logmancer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ignsabbag/logmancer/releases/tag/v0.1.0
