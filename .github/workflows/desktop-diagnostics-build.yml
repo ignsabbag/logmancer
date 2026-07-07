@@ -1,10 +1,7 @@
-name: Temporary desktop diagnostics build
+name: Desktop diagnostics build
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feat/desktop-native-file-opening-diagnostics
 
 permissions:
   contents: read
@@ -29,7 +26,7 @@ jobs:
             package_name: windows
 
     steps:
-      - name: Check out current branch
+      - name: Check out selected branch
         uses: actions/checkout@v6
 
       - name: Install Linux system dependencies
@@ -69,13 +66,13 @@ jobs:
         continue-on-error: true
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: temporary-desktop-diagnostics-${{ runner.os }}-${{ matrix.package_name }}
+          shared-key: desktop-diagnostics-${{ runner.os }}-${{ matrix.package_name }}
 
       - name: Install cargo-leptos
         run: cargo install cargo-leptos --locked
 
       - name: Build release binaries
-        # Temporary diagnostics workflow: intentionally no tests and no clippy.
+        # Diagnostics workflow: intentionally no tests and no clippy.
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Build web site assets
@@ -121,6 +118,6 @@ jobs:
       - name: Upload diagnostic artifact
         uses: actions/upload-artifact@v7
         with:
-          name: temporary-logmancer-package-${{ matrix.package_name }}
+          name: logmancer-diagnostics-package-${{ matrix.package_name }}
           path: dist/logmancer-${{ matrix.package_name }}
           if-no-files-found: error
