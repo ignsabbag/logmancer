@@ -2,41 +2,24 @@
 
 This roadmap describes the current direction for Logmancer. It is intentionally high-level: concrete implementation details should live in GitHub issues, design notes, or specifications when needed.
 
-## Current Version: 0.1.0
+## Current Version: 0.3.0
 
-Logmancer currently provides the core experience for fast log viewing and navigation:
+Logmancer currently provides the core experience for fast log viewing, navigation, and search:
 
 - Optimized file visualization and indexing.
 - `less`-style navigation.
 - Filter panel in web/desktop.
 - Follow mode with `f` in TUI and web.
 - `g` / `G` navigation.
+- Selection and panel synchronization improvements.
+- `less`-style search with `/`, `n`, and `N`.
+- Search match highlighting and search status information where applicable.
 
 Known gap:
 
-- Web follow mode works, but does not yet have a clear visual indicator.
+- The roadmap should continue being translated into concrete GitHub milestones and issues before implementation work starts.
 
 ## Planned Releases
-
-### 0.2.0 — Selection and Panel Synchronization
-
-Improve the reading experience and make the relationship between the main panel and filter panel clearer.
-
-- Highlight the selected line across viewer panels with a background color.
-- Synchronize filter panel selection with the corresponding line in the main panel.
-- Improve visual indication for the active/focused panel.
-- Improve scroll behavior so navigation feels natural and predictable.
-- Add a clear visual indicator for follow mode in web/desktop.
-
-### 0.3.0 — Search
-
-Add first-class search capabilities inspired by `less`.
-
-- Search with `/`.
-- Navigate matches with `n` / `N`.
-- Highlight search matches.
-- Show the current search query and match position when applicable.
-- Implement search consistently across web/desktop/TUI where the feature applies.
 
 ### 0.4.0 — Visual Rules
 
@@ -87,6 +70,7 @@ Bring the most relevant advanced capabilities to the terminal experience without
 
 - Ensure search features work well in the TUI.
 - Support occurrence highlighting where terminal capabilities allow it.
+- Evaluate shortcuts for selected-text occurrence search.
 - Consider structured/table views for parsed logs.
 - Evaluate whether a dedicated filter panel makes sense for the TUI.
 
@@ -94,7 +78,6 @@ Bring the most relevant advanced capabilities to the terminal experience without
 
 These ideas are not assigned to a specific release yet.
 
-- Visual indicator for follow mode in web/desktop.
 - Bookmarks for important lines.
 - Export filtered or selected lines.
 - Saved sessions with searches, filters, visual rules, and file state.
