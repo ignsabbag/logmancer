@@ -218,35 +218,37 @@ fn resolve_root_bound_path(
         PathBuf::from(trimmed)
     };
 
-    if requested.is_absolute() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            "invalid_path",
-            "Invalid path token.",
-        ));
-    }
-
-    for component in requested.components() {
-        match component {
-            Component::ParentDir | Component::Prefix(_) | Component::RootDir => {
-                return Err((
-                    StatusCode::BAD_REQUEST,
-                    "invalid_path",
-                    "Invalid path token.",
-                ));
+    let canonical = if requested.is_absolute() {
+        requested.canonicalize().map_err(|_| {
+            (
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "Requested path was not found.",
+            )
+        })?
+    } else {
+        for component in requested.components() {
+            match component {
+                Component::ParentDir | Component::Prefix(_) | Component::RootDir => {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        "invalid_path",
+                        "Invalid path token.",
+                    ));
+                }
+                _ => {}
             }
-            _ => {}
         }
-    }
 
-    let joined = root.canonical_path.join(&requested);
-    let canonical = joined.canonicalize().map_err(|_| {
-        (
-            StatusCode::NOT_FOUND,
-            "not_found",
-            "Requested path was not found.",
-        )
-    })?;
+        let joined = root.canonical_path.join(&requested);
+        joined.canonicalize().map_err(|_| {
+            (
+                StatusCode::NOT_FOUND,
+                "not_found",
+                "Requested path was not found.",
+            )
+        })?
+    };
 
     if !canonical.starts_with(&root.canonical_path) {
         return Err((
@@ -309,9 +311,37 @@ mod tests {
     }
 
     #[test]
-    fn rejects_absolute_path() {
+    fn accepts_absolute_path_inside_root() {
         let (_dir, root) = mk_root();
-        let result = resolve_root_bound_path(&root, "/etc/passwd");
+        let path = root.canonical_path.join("inside.log");
+        std::fs::write(&path, "hello").unwrap();
+
+        let result = resolve_root_bound_path(&root, &path.to_string_lossy()).unwrap();
+
+        assert_eq!(result, path);
+    }
+
+    #[test]
+    fn server_browser_accepts_native_picker_absolute_path_inside_root() {
+        let (_dir, root) = mk_root();
+        let path = root.canonical_path.join("native-picker.log");
+        std::fs::write(&path, "opened from native picker").unwrap();
+
+        let result = resolve_root_bound_path(&root, &path.to_string_lossy()).unwrap();
+
+        assert_eq!(result, path);
+        assert!(is_text_readable(&result));
+    }
+
+    #[test]
+    fn rejects_absolute_path_outside_root() {
+        let (_dir, root) = mk_root();
+        let outside = tempfile::tempdir().unwrap();
+        let path = outside.path().join("outside.log");
+        std::fs::write(&path, "hello").unwrap();
+
+        let result = resolve_root_bound_path(&root, &path.to_string_lossy());
+
         assert!(result.is_err());
     }
 

@@ -7,7 +7,8 @@ static DESKTOP_SSR_RUNTIME: AtomicBool = AtomicBool::new(false);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FileOpeningRuntime {
     Web,
-    Desktop,
+    DesktopEmbedded,
+    DesktopExternal,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -24,12 +25,21 @@ pub fn resolve_file_opening_capabilities(runtime: FileOpeningRuntime) -> FileOpe
             server_browser: true,
             desktop_native_open: false,
         },
-        FileOpeningRuntime::Desktop => FileOpeningCapabilities {
+        FileOpeningRuntime::DesktopEmbedded => FileOpeningCapabilities {
             browser_upload: false,
             server_browser: false,
             desktop_native_open: true,
         },
+        FileOpeningRuntime::DesktopExternal => FileOpeningCapabilities {
+            browser_upload: true,
+            server_browser: false,
+            desktop_native_open: true,
+        },
     }
+}
+
+pub fn should_ignore_dom_drop(capabilities: FileOpeningCapabilities) -> bool {
+    capabilities.desktop_native_open && !capabilities.browser_upload
 }
 
 pub fn initial_file_opening_capabilities() -> FileOpeningCapabilities {
@@ -51,7 +61,7 @@ fn initial_file_opening_runtime() -> FileOpeningRuntime {
     );
 
     if is_desktop {
-        FileOpeningRuntime::Desktop
+        FileOpeningRuntime::DesktopEmbedded
     } else {
         FileOpeningRuntime::Web
     }
@@ -59,7 +69,11 @@ fn initial_file_opening_runtime() -> FileOpeningRuntime {
 
 #[cfg(feature = "hydrate")]
 fn initial_file_opening_runtime() -> FileOpeningRuntime {
-    detect_file_opening_runtime()
+    let window = leptos::prelude::window();
+    let search = window.location().search().unwrap_or_default();
+    let origin = window.location().origin().unwrap_or_default();
+
+    resolve_initial_hydration_file_opening_runtime(&search, &origin)
 }
 
 #[cfg(not(any(feature = "ssr", feature = "hydrate")))]
@@ -75,32 +89,72 @@ fn is_desktop_runtime_marker(search: &str) -> bool {
         .any(|param| param == "runtime=desktop")
 }
 
+#[cfg(any(feature = "hydrate", test))]
+fn is_embedded_desktop_runtime_marker(search: &str) -> bool {
+    search
+        .trim_start_matches('?')
+        .split('&')
+        .any(|param| param == "runtime=desktop-embedded")
+}
+
+#[cfg(any(feature = "hydrate", test))]
+fn is_external_desktop_origin(origin: &str) -> bool {
+    origin == "http://localhost:3000" || origin == "http://127.0.0.1:3000"
+}
+
+#[cfg(any(feature = "hydrate", test))]
+fn resolve_detected_file_opening_runtime(
+    search: &str,
+    origin: &str,
+    has_tauri_global: bool,
+) -> FileOpeningRuntime {
+    let has_desktop_marker = is_desktop_runtime_marker(search);
+    let has_embedded_desktop_marker = is_embedded_desktop_runtime_marker(search);
+
+    if has_embedded_desktop_marker {
+        FileOpeningRuntime::DesktopEmbedded
+    } else if is_external_desktop_origin(origin) && (has_desktop_marker || has_tauri_global) {
+        FileOpeningRuntime::DesktopExternal
+    } else if has_desktop_marker || has_tauri_global {
+        FileOpeningRuntime::DesktopEmbedded
+    } else {
+        FileOpeningRuntime::Web
+    }
+}
+
+#[cfg(any(feature = "hydrate", test))]
+fn resolve_initial_hydration_file_opening_runtime(
+    search: &str,
+    origin: &str,
+) -> FileOpeningRuntime {
+    if is_embedded_desktop_runtime_marker(search) && !is_external_desktop_origin(origin) {
+        FileOpeningRuntime::DesktopEmbedded
+    } else {
+        FileOpeningRuntime::Web
+    }
+}
+
 #[cfg(feature = "hydrate")]
 pub fn detect_file_opening_runtime() -> FileOpeningRuntime {
     let window = leptos::prelude::window();
     let search = window.location().search().unwrap_or_default();
-    let has_desktop_marker = is_desktop_runtime_marker(&search);
+    let origin = window.location().origin().unwrap_or_default();
     let tauri_key = wasm_bindgen::JsValue::from_str("__TAURI__");
     let has_tauri_global = js_sys::Reflect::get(window.as_ref(), &tauri_key)
         .map(|value| !value.is_undefined() && !value.is_null())
         .unwrap_or(false);
+    let runtime = resolve_detected_file_opening_runtime(&search, &origin, has_tauri_global);
 
     leptos::logging::log!(
-        "File opening runtime detection: search='{}' desktop_marker={} tauri_global={}",
-        search,
-        has_desktop_marker,
-        has_tauri_global
+        "File opening runtime detection: desktop_marker={} embedded_desktop_marker={} external_desktop_origin={} tauri_global={} runtime={:?}",
+        is_desktop_runtime_marker(&search),
+        is_embedded_desktop_runtime_marker(&search),
+        is_external_desktop_origin(&origin),
+        has_tauri_global,
+        runtime
     );
 
-    if has_desktop_marker {
-        return FileOpeningRuntime::Desktop;
-    }
-
-    if has_tauri_global {
-        FileOpeningRuntime::Desktop
-    } else {
-        FileOpeningRuntime::Web
-    }
+    runtime
 }
 
 #[cfg(not(feature = "hydrate"))]
@@ -139,11 +193,41 @@ pub async fn open_native_log_file() -> Result<Option<String>, String> {
         leptos::logging::log!("Desktop native file picker cancelled");
         Ok(None)
     } else {
-        let file_id = value.as_string().ok_or_else(|| {
-            "Desktop native file opening returned an invalid file id.".to_string()
+        let result = value.as_string().ok_or_else(|| {
+            "Desktop native file opening returned an invalid response.".to_string()
         })?;
-        leptos::logging::log!("Desktop native file picker opened file_id={}", file_id);
-        Ok(Some(file_id))
+
+        match resolve_native_open_result(&result) {
+            NativeOpenResult::ServerPath(path) => {
+                leptos::logging::log!(
+                    "Desktop native file picker returned path, opening via server API"
+                );
+                let file_id =
+                    crate::browser_api_client::open_server_browser_file(path.to_string()).await?;
+                leptos::logging::log!("Server API opened file_id={}", file_id);
+                Ok(Some(file_id))
+            }
+            NativeOpenResult::FileId(file_id) => {
+                leptos::logging::log!("Desktop native file picker opened file_id={}", file_id);
+                Ok(Some(file_id.to_string()))
+            }
+        }
+    }
+}
+
+#[cfg(any(feature = "hydrate", test))]
+#[derive(Debug, Eq, PartialEq)]
+enum NativeOpenResult<'a> {
+    ServerPath(&'a str),
+    FileId(&'a str),
+}
+
+#[cfg(any(feature = "hydrate", test))]
+fn resolve_native_open_result(result: &str) -> NativeOpenResult<'_> {
+    if let Some(path) = result.strip_prefix("path:") {
+        NativeOpenResult::ServerPath(path)
+    } else {
+        NativeOpenResult::FileId(result)
     }
 }
 
@@ -166,12 +250,35 @@ mod tests {
     }
 
     #[test]
-    fn desktop_runtime_hides_upload_and_exposes_native_open() {
-        let capabilities = resolve_file_opening_capabilities(FileOpeningRuntime::Desktop);
+    fn embedded_desktop_runtime_hides_upload_and_exposes_native_open() {
+        let capabilities = resolve_file_opening_capabilities(FileOpeningRuntime::DesktopEmbedded);
 
         assert!(!capabilities.browser_upload);
         assert!(!capabilities.server_browser);
         assert!(capabilities.desktop_native_open);
+    }
+
+    #[test]
+    fn external_desktop_runtime_allows_dom_upload_and_native_open() {
+        let capabilities = resolve_file_opening_capabilities(FileOpeningRuntime::DesktopExternal);
+
+        assert!(capabilities.browser_upload);
+        assert!(!capabilities.server_browser);
+        assert!(capabilities.desktop_native_open);
+    }
+
+    #[test]
+    fn file_opening_external_desktop_dom_drop_remains_allowed_with_native_open() {
+        let capabilities = resolve_file_opening_capabilities(FileOpeningRuntime::DesktopExternal);
+
+        assert!(!should_ignore_dom_drop(capabilities));
+    }
+
+    #[test]
+    fn file_opening_embedded_desktop_dom_drop_remains_ignored() {
+        let capabilities = resolve_file_opening_capabilities(FileOpeningRuntime::DesktopEmbedded);
+
+        assert!(should_ignore_dom_drop(capabilities));
     }
 
     #[test]
@@ -187,5 +294,126 @@ mod tests {
         assert!(is_desktop_runtime_marker("?runtime=desktop"));
         assert!(is_desktop_runtime_marker("?foo=bar&runtime=desktop"));
         assert!(!is_desktop_runtime_marker("?runtime=web"));
+    }
+
+    #[test]
+    fn embedded_desktop_runtime_marker_is_detected_from_query_string() {
+        assert!(is_embedded_desktop_runtime_marker(
+            "?runtime=desktop-embedded"
+        ));
+        assert!(is_embedded_desktop_runtime_marker(
+            "?foo=bar&runtime=desktop-embedded"
+        ));
+        assert!(!is_embedded_desktop_runtime_marker("?runtime=desktop"));
+    }
+
+    #[test]
+    fn initial_hydration_external_desktop_dev_matches_web_ssr_tree() {
+        assert_eq!(
+            resolve_initial_hydration_file_opening_runtime(
+                "?runtime=desktop",
+                "http://localhost:3000"
+            ),
+            FileOpeningRuntime::Web
+        );
+    }
+
+    #[test]
+    fn initial_hydration_embedded_desktop_matches_embedded_ssr_tree() {
+        assert_eq!(
+            resolve_initial_hydration_file_opening_runtime(
+                "?runtime=desktop-embedded",
+                "http://127.0.0.1:43123"
+            ),
+            FileOpeningRuntime::DesktopEmbedded
+        );
+    }
+
+    #[test]
+    fn initial_hydration_normal_web_matches_web_ssr_tree() {
+        assert_eq!(
+            resolve_initial_hydration_file_opening_runtime("", "http://localhost:3000"),
+            FileOpeningRuntime::Web
+        );
+    }
+
+    #[test]
+    fn desktop_marker_on_external_dev_origin_detects_external_desktop() {
+        assert_eq!(
+            resolve_detected_file_opening_runtime(
+                "?runtime=desktop",
+                "http://localhost:3000",
+                true
+            ),
+            FileOpeningRuntime::DesktopExternal
+        );
+    }
+
+    #[test]
+    fn desktop_marker_on_external_dev_origin_detects_external_desktop_before_tauri_global() {
+        assert_eq!(
+            resolve_detected_file_opening_runtime(
+                "?runtime=desktop",
+                "http://localhost:3000",
+                false
+            ),
+            FileOpeningRuntime::DesktopExternal
+        );
+    }
+
+    #[test]
+    fn tauri_global_on_external_dev_origin_detects_external_desktop_without_marker() {
+        assert_eq!(
+            resolve_detected_file_opening_runtime("", "http://localhost:3000", true),
+            FileOpeningRuntime::DesktopExternal
+        );
+    }
+
+    #[test]
+    fn external_dev_origin_without_tauri_global_or_marker_stays_web() {
+        assert_eq!(
+            resolve_detected_file_opening_runtime("", "http://localhost:3000", false),
+            FileOpeningRuntime::Web
+        );
+    }
+
+    #[test]
+    fn desktop_marker_on_embedded_origin_detects_embedded_desktop() {
+        assert_eq!(
+            resolve_detected_file_opening_runtime(
+                "?runtime=desktop",
+                "http://127.0.0.1:43123",
+                true
+            ),
+            FileOpeningRuntime::DesktopEmbedded
+        );
+    }
+
+    #[test]
+    fn embedded_desktop_marker_detects_embedded_desktop_after_hydration() {
+        assert_eq!(
+            resolve_detected_file_opening_runtime(
+                "?runtime=desktop-embedded",
+                "http://127.0.0.1:43123",
+                true
+            ),
+            FileOpeningRuntime::DesktopEmbedded
+        );
+    }
+
+    #[test]
+    fn file_opening_native_picker_path_result_uses_server_api_contract() {
+        assert_eq!(
+            resolve_native_open_result("path:/var/log/system.log"),
+            NativeOpenResult::ServerPath("/var/log/system.log")
+        );
+    }
+
+    #[test]
+    fn file_opening_native_picker_file_id_result_uses_route_contract() {
+        assert_eq!(
+            resolve_native_open_result("file-123"),
+            NativeOpenResult::FileId("file-123")
+        );
     }
 }

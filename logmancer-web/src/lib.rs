@@ -102,14 +102,19 @@ pub fn try_open_initial_file(
         .map(str::trim)
         .filter(|path| !path.is_empty())?;
 
-    info!("Attempting to open initial file path={}", path);
+    let file_name = std::path::Path::new(path)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("<unnamed>");
+
+    info!(file_name = %file_name, "Attempting to open initial file");
     match registry.open_file(path) {
         Ok(file_id) => {
             info!("Initial file opened successfully file_id={}", file_id);
             Some(file_id)
         }
         Err(error) => {
-            warn!("Could not open initial file path={} error={}", path, error);
+            warn!(file_name = %file_name, %error, "Could not open initial file");
             error!("Continuing startup without initial file");
             None
         }
