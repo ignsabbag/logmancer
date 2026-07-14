@@ -20,8 +20,13 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 logmancer-core = { path = "../logmancer-core" }
-logmancer-web = { path = "../logmancer-web", features = ["ssr"] }
+logmancer-web = { path = "../logmancer-web", features = ["ssr"], optional = true }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+default = ["embedded-server"]
+embedded-server = ["dep:logmancer-web"]
 
 [dev-dependencies]
 tempfile = "3"

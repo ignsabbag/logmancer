@@ -4,8 +4,7 @@
   "version": "0.3.0",
   "identifier": "com.ignsabbag.logmancer",
   "build": {
-    "beforeDevCommand": "cargo leptos watch --project logmancer-web",
-    "devUrl": "http://localhost:3000",
+    "devUrl": "http://localhost:3000?runtime=desktop",
     "beforeBuildCommand": "cargo leptos build --release --project logmancer-web",
     "frontendDist": "../target/site"
   },

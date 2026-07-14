@@ -2,7 +2,7 @@ use crate::browser_api_client::{fetch_server_browser_status, upload_local_file};
 use crate::components::ServerFileSpotlight;
 use crate::file_opening::{
     detect_file_opening_runtime, initial_file_opening_capabilities, open_native_log_file,
-    resolve_file_opening_capabilities,
+    resolve_file_opening_capabilities, should_ignore_dom_drop,
 };
 use leptos::logging::log;
 use leptos::prelude::*;
@@ -93,7 +93,10 @@ pub fn Home() -> impl IntoView {
             match open_native_log_file().await {
                 Ok(Some(file_id)) => {
                     log!("Home native open succeeded file_id={}", file_id);
-                    navigate(&format!("/log/{file_id}"), Default::default());
+                    navigate(
+                        &log_route_for_file_id(&file_id, &current_location_search()),
+                        Default::default(),
+                    );
                 }
                 Ok(None) => {
                     log!("Home native open cancelled");
@@ -116,7 +119,10 @@ pub fn Home() -> impl IntoView {
         spawn_local(async move {
             match upload_local_file(file).await {
                 Ok(file_id) => {
-                    navigate(&format!("/log/{file_id}"), Default::default());
+                    navigate(
+                        &log_route_for_file_id(&file_id, &current_location_search()),
+                        Default::default(),
+                    );
                 }
                 Err(err) => {
                     log!("Error uploading file: {}", err);
@@ -161,10 +167,8 @@ pub fn Home() -> impl IntoView {
         ev.prevent_default();
         set_is_dragging.set(false);
 
-        if file_opening_capabilities
-            .get_untracked()
-            .desktop_native_open
-        {
+        let capabilities = file_opening_capabilities.get_untracked();
+        if should_ignore_dom_drop(capabilities) {
             log!("Desktop DOM drop ignored; native Tauri drop listener handles file paths");
             return;
         }
@@ -219,7 +223,10 @@ pub fn Home() -> impl IntoView {
                             }}
                         </p>
 
-                        <Show when=move || file_opening_capabilities.get().browser_upload>
+                        <Show when=move || {
+                            let capabilities = file_opening_capabilities.get();
+                            capabilities.browser_upload && !capabilities.desktop_native_open
+                        }>
                             <input
                                 id="home-local-file-input"
                                 class="home-file-input"
@@ -292,5 +299,75 @@ pub fn Home() -> impl IntoView {
 
             <ServerFileSpotlight is_open=is_spotlight_open set_is_open=set_is_spotlight_open />
         </main>
+    }
+}
+
+fn current_location_search() -> String {
+    web_sys::window()
+        .and_then(|window| window.location().search().ok())
+        .unwrap_or_default()
+}
+
+fn log_route_for_file_id(file_id: &str, current_search: &str) -> String {
+    let route = format!("/log/{file_id}");
+
+    match runtime_marker_from_search(current_search) {
+        Some(runtime) => format!("{route}?runtime={runtime}"),
+        None => route,
+    }
+}
+
+fn runtime_marker_from_search(current_search: &str) -> Option<&'static str> {
+    let query = current_search.strip_prefix('?').unwrap_or(current_search);
+
+    query.split('&').find_map(|pair| {
+        let (key, value) = pair.split_once('=')?;
+        if key != "runtime" {
+            return None;
+        }
+
+        match value {
+            "desktop" => Some("desktop"),
+            "desktop-embedded" => Some("desktop-embedded"),
+            _ => None,
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn native_open_file_id_uses_log_route_contract() {
+        assert_eq!(log_route_for_file_id("abc123", ""), "/log/abc123");
+    }
+
+    #[test]
+    fn log_route_preserves_external_desktop_runtime_marker() {
+        assert_eq!(
+            log_route_for_file_id("abc123", "?runtime=desktop"),
+            "/log/abc123?runtime=desktop"
+        );
+    }
+
+    #[test]
+    fn log_route_preserves_embedded_desktop_runtime_marker() {
+        assert_eq!(
+            log_route_for_file_id("abc123", "?runtime=desktop-embedded"),
+            "/log/abc123?runtime=desktop-embedded"
+        );
+    }
+
+    #[test]
+    fn log_route_only_preserves_known_runtime_marker() {
+        assert_eq!(
+            log_route_for_file_id("abc123", "?runtime=desktop-embedded&file=/etc/passwd"),
+            "/log/abc123?runtime=desktop-embedded"
+        );
+        assert_eq!(
+            log_route_for_file_id("abc123", "?runtime=unknown"),
+            "/log/abc123"
+        );
     }
 }

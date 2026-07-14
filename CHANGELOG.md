@@ -6,6 +6,15 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Changed
+
+- Desktop development mode can now run against an external `cargo leptos watch` server without embedding the Leptos/Axum server in the Tauri crate, reducing `tauri dev --no-default-features` compile work.
+
+### Fixed
+
+- Desktop external-server mode now preserves desktop runtime detection across hydration and log navigation, so native file opening and drag/drop continue to work while avoiding duplicate Home file buttons.
+- Server-root file opening now accepts native-picker absolute paths only after canonicalizing them inside `LOGMANCER_SERVER_FILE_ROOT`.
+
 ## [0.3.0] - 2026-07-07
 
 ### Added
