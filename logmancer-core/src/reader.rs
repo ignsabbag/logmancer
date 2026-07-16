@@ -1,5 +1,6 @@
 use crate::handler::LogFileHandler;
-use crate::models::{FileInfo, PageLine, PageResult, SearchStatus};
+use crate::models::{FileInfo, LineStyleIntent, PageLine, PageResult, SearchStatus, VisualRule};
+use crate::visual_rules::VisualRuleEvaluator;
 use log::debug;
 use std::cmp::min;
 use std::io::{self};
@@ -7,6 +8,7 @@ use std::io::{self};
 pub struct LogReader {
     handler: LogFileHandler,
     current_view_start: usize,
+    visual_rule_evaluator: VisualRuleEvaluator,
 }
 
 impl LogReader {
@@ -15,7 +17,12 @@ impl LogReader {
         Ok(LogReader {
             handler: file_log_handler,
             current_view_start: 0,
+            visual_rule_evaluator: VisualRuleEvaluator::default(),
         })
+    }
+
+    pub fn set_visual_rules(&mut self, rules: Vec<VisualRule>) {
+        self.visual_rule_evaluator = VisualRuleEvaluator::compile(&rules);
     }
 
     /// Return file_id, path and other info about the open file
@@ -38,10 +45,8 @@ impl LogReader {
         let from_line = to_line.saturating_sub(max_lines);
         let mut lines = Vec::with_capacity(max_lines);
         for current_line in from_line..to_line {
-            lines.push(PageLine {
-                number: current_line + 1,
-                text: read_ops.read_line(current_line)?,
-            });
+            let text = read_ops.read_line(current_line)?;
+            lines.push(self.page_line(current_line + 1, text));
         }
         let page = PageResult {
             lines,
@@ -65,10 +70,8 @@ impl LogReader {
         let start_line = total_lines.saturating_sub(max_lines);
         let mut lines = Vec::with_capacity(max_lines);
         for current_line in start_line..total_lines {
-            lines.push(PageLine {
-                number: current_line + 1,
-                text: read_ops.read_line(current_line)?,
-            });
+            let text = read_ops.read_line(current_line)?;
+            lines.push(self.page_line(current_line + 1, text));
         }
         let page = PageResult {
             lines,
@@ -100,10 +103,7 @@ impl LogReader {
             if let Some(line) = read_ops.read_filter_line(current_line)? {
                 if matched_lines >= start_line {
                     visible_line_indexes.push(current_line);
-                    lines.push(PageLine {
-                        number: current_line + 1,
-                        text: line,
-                    });
+                    lines.push(self.page_line(current_line + 1, line));
                 }
                 matched_lines += 1;
             }
@@ -134,10 +134,7 @@ impl LogReader {
             current_line -= 1;
             if let Some(line) = read_ops.read_filter_line(current_line)? {
                 visible_line_indexes.push(current_line);
-                lines.push(PageLine {
-                    number: current_line + 1,
-                    text: line,
-                });
+                lines.push(self.page_line(current_line + 1, line));
             }
         }
         lines.reverse();
@@ -189,11 +186,25 @@ impl LogReader {
             .unwrap_or(0);
         self.read_page(start, max_lines)
     }
+
+    fn page_line(&self, number: usize, text: String) -> PageLine {
+        let style = self.evaluate_style(&text);
+        PageLine {
+            number,
+            text,
+            style,
+        }
+    }
+
+    fn evaluate_style(&self, line: &str) -> Option<LineStyleIntent> {
+        self.visual_rule_evaluator.evaluate(line)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{LineStyleIntent, VisualColor, VisualMatcher, VisualRule};
     use std::fs::File;
     use std::io::Write;
     use std::path::PathBuf;
@@ -209,6 +220,12 @@ mod tests {
         std::env::temp_dir().join(format!("logmancer-{name}-{suffix}.log"))
     }
 
+    fn keep_temp_file_for_background_workers(_path: PathBuf) {
+        // LogReader workers outlive the reader values in these tests. Removing
+        // the file before the test process exits can make the reload worker
+        // report a missing file even though the assertions already passed.
+    }
+
     fn wait_search_ready(reader: &LogReader) {
         for _ in 0..40 {
             let status = reader.search_status();
@@ -217,6 +234,51 @@ mod tests {
             }
             sleep(Duration::from_millis(20));
         }
+    }
+
+    fn wait_total_lines(reader: &LogReader, expected: usize) {
+        for _ in 0..10 {
+            if reader.file_info().unwrap().total_lines >= expected {
+                return;
+            }
+            sleep(Duration::from_millis(50));
+        }
+
+        panic!("timed out waiting for {expected} total lines");
+    }
+
+    fn wait_filtered_lines(reader: &mut LogReader, expected: usize) {
+        for _ in 0..40 {
+            let page = reader.read_filter(0, expected.max(1)).unwrap();
+            if page.total_lines >= expected && page.lines.len() >= expected {
+                return;
+            }
+            sleep(Duration::from_millis(20));
+        }
+
+        panic!("timed out waiting for {expected} filtered lines");
+    }
+
+    fn style(foreground: &str, background: &str) -> LineStyleIntent {
+        LineStyleIntent {
+            foreground: Some(VisualColor(foreground.to_string())),
+            background: Some(VisualColor(background.to_string())),
+        }
+    }
+
+    fn visual_rule(pattern: &str, foreground: &str) -> VisualRule {
+        VisualRule {
+            matcher: VisualMatcher::Text(pattern.to_string()),
+            case_sensitive: false,
+            style: style(foreground, "default"),
+        }
+    }
+
+    fn line_identity(page: &PageResult) -> Vec<(usize, String)> {
+        page.lines
+            .iter()
+            .map(|line| (line.number, line.text.clone()))
+            .collect()
     }
 
     #[test]
@@ -239,6 +301,7 @@ mod tests {
             vec![PageLine {
                 number: 2,
                 text: "beta match".to_string(),
+                style: None,
             }]
         );
 
@@ -249,6 +312,7 @@ mod tests {
             vec![PageLine {
                 number: 4,
                 text: "delta match".to_string(),
+                style: None,
             }]
         );
 
@@ -306,10 +370,12 @@ mod tests {
                 PageLine {
                     number: 2,
                     text: "one".to_string(),
+                    style: None,
                 },
                 PageLine {
                     number: 3,
                     text: "two".to_string(),
+                    style: None,
                 },
             ]
         );
@@ -343,15 +409,106 @@ mod tests {
                 PageLine {
                     number: 1,
                     text: "first".to_string(),
+                    style: None,
                 },
                 PageLine {
                     number: 2,
                     text: "second".to_string(),
+                    style: None,
                 },
             ]
         );
 
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn visual_rules_style_page_and_tail_without_changing_visible_lines() {
+        let path = temp_file_path("visual-rules-page-tail");
+        let mut file = File::create(&path).unwrap();
+        writeln!(file, "INFO boot").unwrap();
+        writeln!(file, "WARN cache").unwrap();
+        write!(file, "ERROR disk").unwrap();
+        drop(file);
+
+        let mut plain_reader = LogReader::new(path.to_string_lossy().into_owned()).unwrap();
+        wait_total_lines(&plain_reader, 3);
+        let plain_page = plain_reader.read_page(0, 3).unwrap();
+        let plain_tail = plain_reader.tail(2, false).unwrap();
+
+        let mut styled_reader = LogReader::new(path.to_string_lossy().into_owned()).unwrap();
+        wait_total_lines(&styled_reader, 3);
+        styled_reader.set_visual_rules(vec![visual_rule("error", "red")]);
+
+        let styled_page = styled_reader.read_page(0, 3).unwrap();
+        let styled_tail = styled_reader.tail(2, false).unwrap();
+
+        assert_eq!(line_identity(&styled_page), line_identity(&plain_page));
+        assert_eq!(styled_page.start_line, plain_page.start_line);
+        assert_eq!(styled_page.total_lines, plain_page.total_lines);
+        assert_eq!(styled_page.search, plain_page.search);
+        assert_eq!(styled_page.lines[0].style, None);
+        assert_eq!(styled_page.lines[2].style, Some(style("red", "default")));
+
+        assert_eq!(line_identity(&styled_tail), line_identity(&plain_tail));
+        assert_eq!(styled_tail.start_line, plain_tail.start_line);
+        assert_eq!(styled_tail.total_lines, plain_tail.total_lines);
+        assert_eq!(styled_tail.lines[1].style, Some(style("red", "default")));
+
+        keep_temp_file_for_background_workers(path);
+    }
+
+    #[test]
+    fn visual_rules_do_not_change_filtered_reads_or_tail_filter_outcome() {
+        let path = temp_file_path("visual-rules-filter-tail");
+        let mut file = File::create(&path).unwrap();
+        writeln!(file, "INFO boot").unwrap();
+        writeln!(file, "WARN cache").unwrap();
+        writeln!(file, "ERROR disk").unwrap();
+        drop(file);
+
+        let mut plain_reader = LogReader::new(path.to_string_lossy().into_owned()).unwrap();
+        wait_total_lines(&plain_reader, 3);
+        plain_reader.filter("WARN|ERROR".to_string());
+        wait_filtered_lines(&mut plain_reader, 2);
+        let plain_filter = plain_reader.read_filter(0, 10).unwrap();
+        let plain_tail_filter = plain_reader.tail_filter(2, false).unwrap();
+
+        let mut styled_reader = LogReader::new(path.to_string_lossy().into_owned()).unwrap();
+        wait_total_lines(&styled_reader, 3);
+        styled_reader.filter("WARN|ERROR".to_string());
+        wait_filtered_lines(&mut styled_reader, 2);
+        styled_reader.set_visual_rules(vec![visual_rule("warn", "yellow")]);
+        let styled_filter = styled_reader.read_filter(0, 10).unwrap();
+        let styled_tail_filter = styled_reader.tail_filter(2, false).unwrap();
+
+        assert_eq!(line_identity(&styled_filter), line_identity(&plain_filter));
+        assert_eq!(styled_filter.start_line, plain_filter.start_line);
+        assert_eq!(styled_filter.total_lines, plain_filter.total_lines);
+        assert_eq!(styled_filter.search, plain_filter.search);
+        assert_eq!(
+            styled_filter.lines[0].style,
+            Some(style("yellow", "default"))
+        );
+        assert_eq!(styled_filter.lines[1].style, None);
+
+        assert_eq!(
+            line_identity(&styled_tail_filter),
+            line_identity(&plain_tail_filter)
+        );
+        assert_eq!(styled_tail_filter.start_line, plain_tail_filter.start_line);
+        assert_eq!(
+            styled_tail_filter.total_lines,
+            plain_tail_filter.total_lines
+        );
+        assert_eq!(styled_tail_filter.search, plain_tail_filter.search);
+        assert_eq!(
+            styled_tail_filter.lines[0].style,
+            Some(style("yellow", "default"))
+        );
+        assert_eq!(styled_tail_filter.lines[1].style, None);
+
+        keep_temp_file_for_background_workers(path);
     }
 
     #[test]

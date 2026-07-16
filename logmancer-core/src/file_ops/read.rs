@@ -47,6 +47,10 @@ impl<'a> FileReadOps<'a> {
     }
 
     pub fn read_filter_line(&self, line_number: usize) -> io::Result<Option<String>> {
+        if line_number >= self.log_file.filter.len() {
+            return Ok(None);
+        }
+
         if self.log_file.filter[line_number] {
             Ok(Some(self.read_line(line_number)?))
         } else {
@@ -221,6 +225,30 @@ mod tests {
         assert_eq!(batch[0].line_index, 0);
         assert_eq!(batch[1].line_index, 0);
         assert_eq!(batch[2].line_index, 2);
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn read_filter_line_returns_none_for_unprocessed_filter_bounds() {
+        let path = temp_file_path("read-filter-line-unprocessed-bounds");
+        let mut file = File::create(&path).unwrap();
+        writeln!(file, "alpha").unwrap();
+        write!(file, "beta").unwrap();
+        drop(file);
+
+        let log_file = RwLock::new(LogFile::new(path.to_string_lossy().into_owned()).unwrap());
+        let mut write_ops = FileWriteOps::new(std::sync::Arc::new(log_file));
+        while !write_ops.index_lines().unwrap() {}
+
+        let shared = write_ops.log_file();
+        let read_guard = shared.read().unwrap();
+        let read_ops = FileReadOps::new(read_guard);
+
+        assert_eq!(read_ops.total_lines().unwrap(), 2);
+        assert_eq!(read_ops.processed_filter_lines().unwrap(), 0);
+        assert_eq!(read_ops.read_filter_line(0).unwrap(), None);
+        assert_eq!(read_ops.read_filter_line(2).unwrap(), None);
 
         std::fs::remove_file(path).unwrap();
     }

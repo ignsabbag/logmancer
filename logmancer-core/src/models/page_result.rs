@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 use crate::models::search::PageSearchResult;
+use crate::models::visual_rules::LineStyleIntent;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct PageLine {
     pub number: usize,
     pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<LineStyleIntent>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
