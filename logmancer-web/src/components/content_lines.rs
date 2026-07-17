@@ -15,7 +15,7 @@ use leptos::ev::{KeyboardEvent, WheelEvent};
 use leptos::logging::log;
 use leptos::prelude::*;
 use leptos::{component, html, view, IntoView};
-use logmancer_core::PageResult;
+use logmancer_core::{LineStyleIntent, PageResult, VisualColor};
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -160,6 +160,30 @@ fn line_decorations_for_row(
         .unwrap_or_default()
 }
 
+fn visual_color_css(token: &VisualColor) -> Option<&'static str> {
+    match token.0.as_str() {
+        "error-foreground" => Some("#991b1b"),
+        "error-background" => Some("#fee2e2"),
+        "warning-foreground" => Some("#92400e"),
+        "warning-background" => Some("#fef3c7"),
+        _ => None,
+    }
+}
+
+fn line_style_css_variables(style: Option<&LineStyleIntent>) -> Option<String> {
+    let style = style?;
+    let mut declarations = Vec::with_capacity(2);
+
+    if let Some(color) = style.foreground.as_ref().and_then(visual_color_css) {
+        declarations.push(format!("--log-line-foreground: {color}"));
+    }
+    if let Some(color) = style.background.as_ref().and_then(visual_color_css) {
+        declarations.push(format!("--log-line-background: {color}"));
+    }
+
+    (!declarations.is_empty()).then(|| declarations.join("; "))
+}
+
 #[component]
 fn DecoratedLineText(line_text: String, decorations: Vec<LineDecoration>) -> impl IntoView {
     let segments = split_line_segments(&line_text, &decorations);
@@ -179,13 +203,19 @@ fn DecoratedLineText(line_text: String, decorations: Vec<LineDecoration>) -> imp
 fn LogLineRow(
     line_number: usize,
     line_text: String,
+    line_style: Option<LineStyleIntent>,
     decorations: Vec<LineDecoration>,
     selected_line: ReadSignal<Option<usize>>,
     select_line: Callback<usize>,
 ) -> impl IntoView {
+    let visual_style = line_style_css_variables(line_style.as_ref());
+    let has_visual_style = visual_style.is_some();
+
     view! {
         <div
             class:selected=move || selected_line.get() == Some(line_number)
+            class:visual-rule-line=has_visual_style
+            style=visual_style
             on:click=move |_| select_line.run(line_number)
         >
             <DecoratedLineText line_text=line_text decorations=decorations />
@@ -564,11 +594,13 @@ pub fn ContentLines(context: LogViewContext) -> impl IntoView {
                             { lines.into_iter().map(|line| {
                                 let line_number = line.number;
                                 let line_text = line.text;
+                                let line_style = line.style;
                                 let decorations = line_decorations_for_row(&decorations_by_line, line_number);
                                 view! {
                                     <LogLineRow
                                         line_number=line_number
                                         line_text=line_text
+                                        line_style=line_style
                                         decorations=decorations
                                         selected_line=selected_line
                                         select_line=select_line_callback
@@ -590,12 +622,13 @@ mod tests {
     use super::{
         can_auto_enable_global_follow, can_mutate_global_follow_state, is_at_end,
         is_editable_target, is_handled_key, keyboard_target_line, line_decorations_for_row,
-        search_segment_class, should_handle_focus_request, should_restore_focus,
-        tail_update_for_navigation, wheel_lines_to_jump, wheel_target_line, TailEndComparison,
-        TailNavigationUpdate, ARROW_DOWN, ARROW_UP, PAGE_DOWN, PAGE_UP,
+        line_style_css_variables, search_segment_class, should_handle_focus_request,
+        should_restore_focus, tail_update_for_navigation, wheel_lines_to_jump, wheel_target_line,
+        TailEndComparison, TailNavigationUpdate, ARROW_DOWN, ARROW_UP, PAGE_DOWN, PAGE_UP,
     };
     use crate::components::context::SelectionSource;
     use crate::components::line_decorations::{DecorationKind, LineDecoration};
+    use logmancer_core::{LineStyleIntent, VisualColor};
 
     fn decoration(start: usize, end: usize, kind: DecorationKind) -> LineDecoration {
         LineDecoration { start, end, kind }
@@ -676,6 +709,43 @@ mod tests {
         let decorations = line_decorations_for_row(&decorations_by_line, 8);
 
         assert_eq!(decorations, Vec::<LineDecoration>::new());
+    }
+
+    #[test]
+    fn known_visual_tokens_map_to_closed_css_variables() {
+        let style = LineStyleIntent {
+            foreground: Some(VisualColor("error-foreground".to_string())),
+            background: Some(VisualColor("error-background".to_string())),
+        };
+
+        assert_eq!(
+            line_style_css_variables(Some(&style)),
+            Some("--log-line-foreground: #991b1b; --log-line-background: #fee2e2".to_string())
+        );
+    }
+
+    #[test]
+    fn absent_or_unknown_visual_tokens_leave_row_unstyled() {
+        let style = LineStyleIntent {
+            foreground: Some(VisualColor("hotpink; background: url(bad)".to_string())),
+            background: None,
+        };
+
+        assert_eq!(line_style_css_variables(None), None);
+        assert_eq!(line_style_css_variables(Some(&style)), None);
+    }
+
+    #[test]
+    fn known_visual_tokens_render_without_forwarding_unknown_tokens() {
+        let style = LineStyleIntent {
+            foreground: Some(VisualColor("unknown".to_string())),
+            background: Some(VisualColor("warning-background".to_string())),
+        };
+
+        assert_eq!(
+            line_style_css_variables(Some(&style)),
+            Some("--log-line-background: #fef3c7".to_string())
+        );
     }
 
     #[test]
