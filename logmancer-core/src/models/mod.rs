@@ -7,4 +7,5 @@ pub mod visual_rules;
 pub use file_info::FileInfo;
 pub use page_result::{PageLine, PageResult};
 pub use search::SearchStatus;
-pub use visual_rules::{LineStyleIntent, VisualRule};
+#[allow(unused_imports)]
+pub use visual_rules::{LineStyleIntent, ValidationDiagnostic, ValidationSeverity, VisualRule};
