@@ -3,8 +3,12 @@ use crate::api::commons::{
     ReadPageRequest, SearchNavigateRequest, SearchStatusRequest, ServerBrowserListRequest,
     ServerBrowserListResponse, ServerBrowserOpenRequest, ServerBrowserStatusResponse, TailRequest,
 };
+#[cfg(target_arch = "wasm32")]
+use crate::api::commons::{VisualRulesResponse, VisualRulesSaveRequest};
 use leptos::prelude::{window, ServerFnError};
 use leptos::wasm_bindgen::{JsCast, JsValue};
+#[cfg(target_arch = "wasm32")]
+use logmancer_core::FileInfo;
 use logmancer_core::PageResult;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{FormData, RequestInit, Response};
@@ -34,6 +38,95 @@ pub async fn fetch_page(
     };
     let result = request.send().await?.json::<PageResult>().await?;
     Ok(result)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn fetch_file_info(file_id: String) -> Result<FileInfo, String> {
+    let base = window()
+        .location()
+        .origin()
+        .map_err(|_| "Could not detect application origin.".to_string())?;
+    let response = reqwest::Client::new()
+        .get(format!("{base}/api/file_info"))
+        .query(&crate::api::commons::FileInfoRequest { file_id })
+        .send()
+        .await
+        .map_err(|_| "Could not connect to the server.".to_string())?;
+
+    if response.status().is_success() {
+        response
+            .json::<FileInfo>()
+            .await
+            .map_err(|_| "Could not parse file information.".to_string())
+    } else {
+        Err(parse_api_error_message(response, "Could not load file information.").await)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn fetch_visual_rules() -> Result<VisualRulesResponse, String> {
+    request_visual_rules("/api/visual-rules", reqwest::Method::GET).await
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn retry_visual_rules() -> Result<VisualRulesResponse, String> {
+    request_visual_rules("/api/visual-rules/retry", reqwest::Method::POST).await
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn request_visual_rules(
+    path: &str,
+    method: reqwest::Method,
+) -> Result<VisualRulesResponse, String> {
+    let base = window()
+        .location()
+        .origin()
+        .map_err(|_| "Could not detect application origin.".to_string())?;
+    let request = reqwest::Client::new().request(method, format!("{base}{path}"));
+    let response = request
+        .send()
+        .await
+        .map_err(|_| "Could not connect to the server.".to_string())?;
+    if response.status().is_success() {
+        response
+            .json()
+            .await
+            .map_err(|_| "Could not parse visual rules.".to_string())
+    } else {
+        Err(parse_api_error_message(response, "Could not load visual rules.").await)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn save_visual_rules(
+    base_revision: u64,
+    envelope: logmancer_core::VisualRulesEnvelope,
+    replace: bool,
+) -> Result<VisualRulesResponse, String> {
+    let base = window()
+        .location()
+        .origin()
+        .map_err(|_| "Could not detect application origin.".to_string())?;
+    let response = reqwest::Client::new()
+        .post(format!(
+            "{base}/api/visual-rules/{}",
+            if replace { "replace" } else { "save" }
+        ))
+        .json(&VisualRulesSaveRequest {
+            base_revision,
+            envelope,
+        })
+        .send()
+        .await
+        .map_err(|_| "Could not connect to the server.".to_string())?;
+    if response.status().is_success() {
+        response
+            .json()
+            .await
+            .map_err(|_| "Could not parse saved visual rules.".to_string())
+    } else {
+        Err(parse_api_error_message(response, "Could not save visual rules.").await)
+    }
 }
 
 pub async fn apply_filter(file_id: String, filter: String) -> Result<String, ServerFnError> {

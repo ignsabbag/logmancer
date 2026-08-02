@@ -9,7 +9,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 ### Added
 
 - Core visual rules foundation with UI-neutral rule models, text/regex matching, array-order priority, per-rule case sensitivity, safe invalid-rule handling, and optional line style metadata for foreground/background colors (#63, #64, #65, #66).
-- The shared web viewer used by browser and desktop shells now renders safe whole-line visual-rule foreground/background styles (#68).
+- The shared web viewer used by browser and desktop shells now renders safe whole-line visual-rule foreground/background styles, with an opt-in debug fixture for end-to-end development testing (#68).
+- Web and desktop visual-rules management now loads and saves one revision-checked global configuration through the shared core persistence manager.
 
 ### Changed
 

@@ -14,7 +14,7 @@ use leptos::task::spawn_local;
 use leptos::{component, view, IntoView};
 
 #[component]
-pub fn FilterPane() -> impl IntoView {
+pub fn FilterPane(refresh_generation: ReadSignal<u64>) -> impl IntoView {
     let LogFileContext { file_id, .. } = use_context().expect("LogFileContext not found");
 
     let div_ref = NodeRef::<Div>::new();
@@ -38,6 +38,7 @@ pub fn FilterPane() -> impl IntoView {
     let (start_line, set_start_line) = signal(0_usize);
     let (page_size, set_page_size) = signal(50_usize);
     let filter_page = LocalResource::new(move || {
+        refresh_generation.track();
         let file_id = file_id.get();
         let start = start_line.get();
         let size = page_size.get();

@@ -1,4 +1,5 @@
 mod app;
+mod app_bar;
 mod auto_scroll_status;
 mod content_lines;
 mod content_scroll;
@@ -15,10 +16,14 @@ mod progress_bar;
 mod search_panel;
 mod search_status;
 mod server_file_spotlight;
+mod visual_rule_editor;
+mod visual_rules;
 
 pub use app::App;
+pub use app_bar::AppBar;
 pub use context::Port;
 pub use filter_pane::FilterPane;
 pub use home::Home;
 pub use log_view::LogView;
 pub use server_file_spotlight::ServerFileSpotlight;
+pub use visual_rules::VisualRules;

@@ -79,7 +79,7 @@ fn apply_search_page_result(
 }
 
 #[component]
-pub fn MainPane() -> impl IntoView {
+pub fn MainPane(refresh_generation: ReadSignal<u64>) -> impl IntoView {
     let LogFileContext {
         file_id,
         tail,
@@ -129,6 +129,7 @@ pub fn MainPane() -> impl IntoView {
     let (handled_next_request, set_handled_next_request) = signal(0_u64);
     let (handled_previous_request, set_handled_previous_request) = signal(0_u64);
     let log_page = LocalResource::new(move || {
+        refresh_generation.track();
         fetch_page(
             file_id.get(),
             start_line.get(),

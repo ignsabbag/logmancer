@@ -5,6 +5,170 @@ pub mod app;
 pub(crate) mod browser_api_client;
 pub mod components;
 pub mod file_opening;
+mod visual_rules_state;
+
+#[cfg(feature = "ssr")]
+pub fn visual_rules_path_from_env() -> std::path::PathBuf {
+    visual_rules_path(
+        std::env::var_os("LOGMANCER_CONFIG_DIR").map(std::path::PathBuf::from),
+        std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn visual_rules_path(
+    config_dir: Option<std::path::PathBuf>,
+    working_dir: std::path::PathBuf,
+) -> std::path::PathBuf {
+    let base = config_dir
+        .filter(|value| !value.as_os_str().is_empty())
+        .unwrap_or_else(|| working_dir.join("config"));
+    base.join("visual-rules.json")
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod tests {
+    use super::{visual_rules_path, visual_rules_runtime, visual_rules_runtime_with_initial_file};
+    use logmancer_core::{
+        LineStyleIntent, ManagedVisualRule, VisualColor, VisualMatcher, VisualRulesEnvelope,
+    };
+    use std::path::PathBuf;
+
+    #[test]
+    fn config_directory_takes_precedence_over_default_visual_rules_location() {
+        let path = visual_rules_path(
+            Some(PathBuf::from("/temporary/config")),
+            PathBuf::from("/working-directory"),
+        );
+
+        assert_eq!(path, PathBuf::from("/temporary/config/visual-rules.json"));
+    }
+
+    #[test]
+    fn missing_config_directory_uses_the_working_directory_default() {
+        let path = visual_rules_path(None, PathBuf::from("/working-directory"));
+
+        assert_eq!(
+            path,
+            PathBuf::from("/working-directory/config/visual-rules.json")
+        );
+    }
+
+    #[test]
+    fn visual_rules_runtime_creates_parent_and_shares_persisted_rules_with_readers() {
+        let directory = tempfile::tempdir().unwrap();
+        let store_path = directory.path().join("config/visual-rules.json");
+        let log_path = directory.path().join("application.log");
+        std::fs::write(&log_path, "ERROR disk\n").unwrap();
+
+        let (registry, manager) = visual_rules_runtime(store_path.clone());
+        let revision = manager.state().revision;
+        manager
+            .save(
+                revision,
+                VisualRulesEnvelope::new(vec![ManagedVisualRule {
+                    name: None,
+                    enabled: true,
+                    matcher: VisualMatcher::Text("ERROR".to_string()),
+                    case_sensitive: true,
+                    style: LineStyleIntent {
+                        foreground: Some(VisualColor("red".to_string())),
+                        background: None,
+                    },
+                }]),
+            )
+            .unwrap();
+        let file_id = registry.open_file(log_path.to_str().unwrap()).unwrap();
+
+        let mut highlighted = false;
+        for _ in 0..100 {
+            let page = registry
+                .get_reader(&file_id)
+                .unwrap()
+                .read_page(0, 1)
+                .unwrap();
+            highlighted = page.lines.first().is_some_and(|line| line.style.is_some());
+            if highlighted {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        assert!(store_path.is_file());
+        assert!(highlighted);
+    }
+
+    #[test]
+    fn visual_rules_runtime_survives_load_failure_without_claiming_save_success() {
+        let directory = tempfile::tempdir().unwrap();
+        let (_, manager) = visual_rules_runtime(directory.path().to_path_buf());
+
+        assert!(manager
+            .save(
+                manager.state().revision,
+                VisualRulesEnvelope::new(Vec::new())
+            )
+            .is_err());
+    }
+
+    #[test]
+    fn shared_runtime_reopens_the_standard_web_initial_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let log_path = directory.path().join("initial.log");
+        std::fs::write(&log_path, "INFO ready\n").unwrap();
+
+        let (registry, _, file_id) = visual_rules_runtime_with_initial_file(
+            directory.path().join("config/visual-rules.json"),
+            log_path.to_str(),
+        );
+
+        assert!(registry.get_reader(&file_id.unwrap()).is_some());
+    }
+}
+
+#[cfg(feature = "ssr")]
+pub fn visual_rules_runtime(
+    path: std::path::PathBuf,
+) -> (
+    std::sync::Arc<logmancer_core::LogRegistry>,
+    std::sync::Arc<logmancer_core::VisualRulesManager>,
+) {
+    use logmancer_core::{LogRegistry, NativeVisualRulesStore, VisualRulesManager};
+    use std::sync::Arc;
+    use tracing::warn;
+
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        if let Err(error) = std::fs::create_dir_all(parent) {
+            warn!(path = %parent.display(), %error, "Could not create visual rules directory");
+        }
+    }
+    let manager =
+        VisualRulesManager::with_store(Arc::new(NativeVisualRulesStore::new(path.clone())));
+    if let Err(error) = manager.load() {
+        warn!(path = %path.display(), %error, "Could not load optional visual rules configuration");
+    }
+    (
+        Arc::new(LogRegistry::with_manager(manager.clone())),
+        manager,
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn visual_rules_runtime_with_initial_file(
+    path: std::path::PathBuf,
+    initial_path: Option<&str>,
+) -> (
+    std::sync::Arc<logmancer_core::LogRegistry>,
+    std::sync::Arc<logmancer_core::VisualRulesManager>,
+    Option<String>,
+) {
+    let (registry, manager) = visual_rules_runtime(path);
+    let file_id = try_open_initial_file(&registry, initial_path);
+    (registry, manager, file_id)
+}
 
 #[cfg(feature = "hydrate")]
 #[wasm_bindgen::prelude::wasm_bindgen]
@@ -16,18 +180,32 @@ pub fn hydrate() {
 
 #[cfg(feature = "ssr")]
 pub async fn start_leptos(port: u16) {
-    use logmancer_core::LogRegistry;
-    use std::sync::Arc;
-
-    start_leptos_with_registry(port, Arc::new(LogRegistry::new())).await;
+    let (registry, manager) = visual_rules_runtime(visual_rules_path_from_env());
+    start_leptos_with_registry_and_manager(port, registry, manager).await;
 }
 
 #[cfg(feature = "ssr")]
 pub async fn start_leptos_with_registry(
     port: u16,
-    registry: std::sync::Arc<logmancer_core::LogRegistry>,
+    _registry: std::sync::Arc<logmancer_core::LogRegistry>,
 ) {
-    use crate::api::config::api_routes_with_registry;
+    let initial_path = std::env::args()
+        .nth(1)
+        .or_else(|| std::env::var("LOGMANCER_INITIAL_FILE").ok());
+    let (registry, manager, _) = visual_rules_runtime_with_initial_file(
+        visual_rules_path_from_env(),
+        initial_path.as_deref(),
+    );
+    start_leptos_with_registry_and_manager(port, registry, manager).await;
+}
+
+#[cfg(feature = "ssr")]
+pub async fn start_leptos_with_registry_and_manager(
+    port: u16,
+    registry: std::sync::Arc<logmancer_core::LogRegistry>,
+    visual_rules_manager: std::sync::Arc<logmancer_core::VisualRulesManager>,
+) {
+    use crate::api::config::api_routes_with_registry_and_manager;
     use crate::app::shell;
     use crate::components::App;
     use axum::Router;
@@ -50,7 +228,10 @@ pub async fn start_leptos_with_registry(
     let routes = generate_route_list(App);
 
     let app = Router::new()
-        .nest("/api", api_routes_with_registry(registry))
+        .nest(
+            "/api",
+            api_routes_with_registry_and_manager(registry.clone(), visual_rules_manager),
+        )
         .leptos_routes(&leptos_options, routes, {
             let leptos_options = leptos_options.clone();
             move || shell(leptos_options.clone())
@@ -69,10 +250,8 @@ pub async fn start_leptos_with_registry(
 
 #[cfg(feature = "ssr")]
 pub async fn start_axum(port: u16) {
-    use crate::api::config::api_routes_with_registry;
-    use logmancer_core::LogRegistry;
+    use crate::api::config::api_routes_with_registry_and_manager;
     use std::net::SocketAddr;
-    use std::sync::Arc;
     use tracing::info;
 
     init_backend_logging();
@@ -83,10 +262,10 @@ pub async fn start_axum(port: u16) {
     // `axum::Server` is a re-export of `hyper::Server`
     info!("Starting API server on http://{}", &addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(
-        listener,
-        api_routes_with_registry(Arc::new(LogRegistry::new())).into_make_service(),
-    )
+    axum::serve(listener, {
+        let (registry, manager) = visual_rules_runtime(visual_rules_path_from_env());
+        api_routes_with_registry_and_manager(registry, manager).into_make_service()
+    })
     .await
     .unwrap();
 }

@@ -160,13 +160,31 @@ fn line_decorations_for_row(
         .unwrap_or_default()
 }
 
-fn visual_color_css(token: &VisualColor) -> Option<&'static str> {
-    match token.0.as_str() {
-        "error-foreground" => Some("#991b1b"),
-        "error-background" => Some("#fee2e2"),
-        "warning-foreground" => Some("#92400e"),
-        "warning-background" => Some("#fef3c7"),
-        _ => None,
+#[derive(Clone, Copy)]
+enum VisualColorRole {
+    Foreground,
+    Background,
+}
+
+fn visual_color_css(token: &VisualColor, role: VisualColorRole) -> Option<&'static str> {
+    match (token.0.as_str(), role) {
+        ("red", VisualColorRole::Foreground) => Some("#b91c1c"),
+        ("red", VisualColorRole::Background) => Some("#fee2e2"),
+        ("orange", VisualColorRole::Foreground) => Some("#c2410c"),
+        ("orange", VisualColorRole::Background) => Some("#ffedd5"),
+        ("yellow", VisualColorRole::Foreground) => Some("#a16207"),
+        ("yellow", VisualColorRole::Background) => Some("#fef9c3"),
+        ("green", VisualColorRole::Foreground) => Some("#15803d"),
+        ("green", VisualColorRole::Background) => Some("#dcfce7"),
+        ("cyan", VisualColorRole::Foreground) => Some("#0e7490"),
+        ("cyan", VisualColorRole::Background) => Some("#cffafe"),
+        ("blue", VisualColorRole::Foreground) => Some("#1d4ed8"),
+        ("blue", VisualColorRole::Background) => Some("#dbeafe"),
+        ("purple", VisualColorRole::Foreground) => Some("#7e22ce"),
+        ("purple", VisualColorRole::Background) => Some("#f3e8ff"),
+        ("gray", VisualColorRole::Foreground) => Some("#4b5563"),
+        ("gray", VisualColorRole::Background) => Some("#f3f4f6"),
+        ("default", _) | (_, _) => None,
     }
 }
 
@@ -174,10 +192,18 @@ fn line_style_css_variables(style: Option<&LineStyleIntent>) -> Option<String> {
     let style = style?;
     let mut declarations = Vec::with_capacity(2);
 
-    if let Some(color) = style.foreground.as_ref().and_then(visual_color_css) {
+    if let Some(color) = style
+        .foreground
+        .as_ref()
+        .and_then(|token| visual_color_css(token, VisualColorRole::Foreground))
+    {
         declarations.push(format!("--log-line-foreground: {color}"));
     }
-    if let Some(color) = style.background.as_ref().and_then(visual_color_css) {
+    if let Some(color) = style
+        .background
+        .as_ref()
+        .and_then(|token| visual_color_css(token, VisualColorRole::Background))
+    {
         declarations.push(format!("--log-line-background: {color}"));
     }
 
@@ -623,8 +649,9 @@ mod tests {
         can_auto_enable_global_follow, can_mutate_global_follow_state, is_at_end,
         is_editable_target, is_handled_key, keyboard_target_line, line_decorations_for_row,
         line_style_css_variables, search_segment_class, should_handle_focus_request,
-        should_restore_focus, tail_update_for_navigation, wheel_lines_to_jump, wheel_target_line,
-        TailEndComparison, TailNavigationUpdate, ARROW_DOWN, ARROW_UP, PAGE_DOWN, PAGE_UP,
+        should_restore_focus, tail_update_for_navigation, visual_color_css, wheel_lines_to_jump,
+        wheel_target_line, TailEndComparison, TailNavigationUpdate, VisualColorRole, ARROW_DOWN,
+        ARROW_UP, PAGE_DOWN, PAGE_UP,
     };
     use crate::components::context::SelectionSource;
     use crate::components::line_decorations::{DecorationKind, LineDecoration};
@@ -712,23 +739,35 @@ mod tests {
     }
 
     #[test]
-    fn known_visual_tokens_map_to_closed_css_variables() {
-        let style = LineStyleIntent {
-            foreground: Some(VisualColor("error-foreground".to_string())),
-            background: Some(VisualColor("error-background".to_string())),
-        };
+    fn canonical_visual_tokens_map_to_role_appropriate_shades() {
+        let mappings = [
+            ("red", "#b91c1c", "#fee2e2"),
+            ("orange", "#c2410c", "#ffedd5"),
+            ("yellow", "#a16207", "#fef9c3"),
+            ("green", "#15803d", "#dcfce7"),
+            ("cyan", "#0e7490", "#cffafe"),
+            ("blue", "#1d4ed8", "#dbeafe"),
+            ("purple", "#7e22ce", "#f3e8ff"),
+            ("gray", "#4b5563", "#f3f4f6"),
+        ];
 
-        assert_eq!(
-            line_style_css_variables(Some(&style)),
-            Some("--log-line-foreground: #991b1b; --log-line-background: #fee2e2".to_string())
-        );
+        for (token, foreground, background) in mappings {
+            assert_eq!(
+                visual_color_css(&VisualColor(token.to_string()), VisualColorRole::Foreground),
+                Some(foreground)
+            );
+            assert_eq!(
+                visual_color_css(&VisualColor(token.to_string()), VisualColorRole::Background),
+                Some(background)
+            );
+        }
     }
 
     #[test]
-    fn absent_or_unknown_visual_tokens_leave_row_unstyled() {
+    fn default_absent_or_unknown_visual_tokens_leave_row_unstyled() {
         let style = LineStyleIntent {
-            foreground: Some(VisualColor("hotpink; background: url(bad)".to_string())),
-            background: None,
+            foreground: Some(VisualColor("default".to_string())),
+            background: Some(VisualColor("hotpink; background: url(bad)".to_string())),
         };
 
         assert_eq!(line_style_css_variables(None), None);
@@ -739,12 +778,12 @@ mod tests {
     fn known_visual_tokens_render_without_forwarding_unknown_tokens() {
         let style = LineStyleIntent {
             foreground: Some(VisualColor("unknown".to_string())),
-            background: Some(VisualColor("warning-background".to_string())),
+            background: Some(VisualColor("yellow".to_string())),
         };
 
         assert_eq!(
             line_style_css_variables(Some(&style)),
-            Some("--log-line-background: #fef3c7".to_string())
+            Some("--log-line-background: #fef9c3".to_string())
         );
     }
 

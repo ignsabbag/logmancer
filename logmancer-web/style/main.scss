@@ -549,6 +549,30 @@ body {
   }
 }
 
+.app-bar {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 2fr) 1fr;
+  align-items: center;
+  min-height: 38px;
+  padding: 4px 8px;
+  border-bottom: 1px solid #dbe2ef;
+  background: #f8fafc;
+  font-family: system-ui, sans-serif;
+}
+
+.app-bar__filename { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; color: #334155; }
+.app-bar__actions { display: flex; justify-content: flex-end; gap: 6px; }
+.app-bar button, .visual-rules-drawer button, .visual-rules-modal button { border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #1e293b; cursor: pointer; padding: 5px 8px; }
+.visual-rules-drawer { position: fixed; right: 0; top: 0; z-index: 10000; width: min(390px, 94vw); height: 100vh; overflow: auto; padding: 16px; background: #fff; box-shadow: -12px 0 30px rgba(15, 23, 42, .18); font-family: system-ui, sans-serif; }
+.visual-rules-drawer--closed { display: none; }
+.visual-rules-drawer header, .visual-rules-drawer footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.visual-rules-drawer ol { margin: 12px 0; padding-left: 22px; }
+.visual-rules-drawer li { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.visual-rules-modal-backdrop { position: fixed; inset: 0; z-index: 10001; display: grid; place-items: center; background: rgba(15, 23, 42, .45); }
+.visual-rules-modal { width: min(420px, 92vw); display: grid; gap: 12px; padding: 18px; border-radius: 10px; background: #fff; font-family: system-ui, sans-serif; }
+.visual-rules-modal label { display: grid; gap: 4px; }
+.visual-rules-modal input { border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px; }
+
 .main-pane-container {
   flex: 0 0 70%;
   min-width: 0;
