@@ -6,6 +6,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added
+
+- Core visual rules foundation with UI-neutral rule models, text/regex matching, array-order priority, per-rule case sensitivity, safe invalid-rule handling, and optional line style metadata for foreground/background colors (#63, #64, #65, #66).
+
 ### Changed
 
 - Desktop development mode can now run against an external `cargo leptos watch` server without embedding the Leptos/Axum server in the Tauri crate, reducing `tauri dev --no-default-features` compile work.
