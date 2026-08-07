@@ -419,6 +419,11 @@ body {
   cursor: default;
 }
 
+.text-lines div.visual-rule-line {
+  color: var(--log-line-foreground, inherit);
+  background-color: var(--log-line-background, transparent);
+}
+
 .text-lines div.selected {
   background: #dbeafe;
   box-shadow: inset 0 0 0 1px #93c5fd;
