@@ -3,6 +3,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 #[cfg(any(feature = "embedded-server", test))]
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::RwLock;
 use std::thread::sleep;
 use std::time::Duration;
 use tauri::{Manager, Url};
@@ -12,7 +13,8 @@ use tracing::{info, warn};
 #[cfg(feature = "embedded-server")]
 use {
     logmancer_web::{
-        file_opening::enable_desktop_ssr_runtime, start_leptos_with_registry, try_open_initial_file,
+        file_opening::enable_desktop_ssr_runtime, start_leptos_with_registry_and_manager,
+        try_open_initial_file, visual_rules_runtime,
     },
     tauri::WindowEvent,
 };
@@ -26,7 +28,22 @@ const EXTERNAL_SERVER_FALLBACK_URL: &str = "data:text/html;charset=utf-8,%3C!doc
 #[derive(Clone)]
 struct DesktopState {
     #[cfg_attr(not(feature = "embedded-server"), allow(dead_code))]
-    registry: Arc<LogRegistry>,
+    registry: Arc<RwLock<Arc<LogRegistry>>>,
+}
+
+impl DesktopState {
+    fn registry(&self) -> Arc<LogRegistry> {
+        self.registry.read().expect("desktop registry lock").clone()
+    }
+}
+
+#[cfg(any(feature = "embedded-server", test))]
+fn visual_rules_store_path(config_dir: Option<PathBuf>) -> Result<PathBuf, String> {
+    config_dir
+        .map(|directory| directory.join("visual-rules.json"))
+        .ok_or_else(|| {
+            "Could not resolve the Tauri app configuration directory for visual rules.".to_string()
+        })
 }
 
 fn wait_for_tcp_server<A>(addr: A, attempts: u32, delay: Duration) -> bool
@@ -128,7 +145,7 @@ async fn open_native_log_file(
                 .map_err(|error| format!("Could not resolve selected file path: {error}"))
         })
         .transpose()?;
-    open_selected_log_file(state.registry.as_ref(), selected_path, "native_picker")
+    open_selected_log_file(state.registry().as_ref(), selected_path, "native_picker")
 }
 
 #[cfg(not(feature = "embedded-server"))]
@@ -172,6 +189,13 @@ mod tests {
     use std::net::TcpListener;
     use std::thread::sleep;
     use std::time::Duration;
+
+    #[test]
+    fn visual_rules_path_resolution_failure_writes_nowhere() {
+        let error = visual_rules_store_path(None).unwrap_err();
+
+        assert!(error.contains("app configuration directory"));
+    }
 
     #[test]
     fn opening_no_selected_path_returns_none_without_requiring_server_root() {
@@ -322,7 +346,7 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .manage(DesktopState {
-            registry: Arc::new(LogRegistry::new()),
+            registry: Arc::new(RwLock::new(Arc::new(LogRegistry::new()))),
         })
         .invoke_handler(tauri::generate_handler![open_native_log_file])
         .plugin(tauri_plugin_dialog::init())
@@ -333,7 +357,11 @@ pub fn run() {
         enable_desktop_ssr_runtime();
         info!("Desktop runtime configured for embedded SSR rendering");
 
-        let registry = app.state::<DesktopState>().registry.clone();
+        let state = app.state::<DesktopState>();
+        let visual_rules_path = visual_rules_store_path(app.path().app_config_dir().ok())
+            .map_err(std::io::Error::other)?;
+        let (registry, visual_rules_manager) = visual_rules_runtime(visual_rules_path);
+        *state.registry.write().expect("desktop registry lock") = registry.clone();
         let initial_file_id = try_open_initial_file(&registry, initial_path.as_deref());
         let port = std::net::TcpListener::bind("127.0.0.1:0")
             .expect("Could not open a socket")
@@ -343,11 +371,11 @@ pub fn run() {
         info!("Spawning embedded SSR server on port={}", port);
         tauri::async_runtime::spawn(async move {
             info!("Embedded SSR server task started");
-            start_leptos_with_registry(port, registry).await
+            start_leptos_with_registry_and_manager(port, registry, visual_rules_manager).await
         });
         wait_for_embedded_server(port);
         let window = app.get_webview_window("main").unwrap();
-        let registry_for_drop = app.state::<DesktopState>().registry.clone();
+        let registry_for_drop = app.state::<DesktopState>().registry();
         let window_for_drop = window.clone();
         window.on_window_event(move |event| match event {
             WindowEvent::DragDrop(tauri::DragDropEvent::Enter { paths, .. }) => {

@@ -20,3 +20,6 @@ pub mod server_browser;
 
 #[cfg(feature = "ssr")]
 pub mod search;
+
+#[cfg(feature = "ssr")]
+pub mod visual_rules;

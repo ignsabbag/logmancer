@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "rules": [
+    {
+      "name": "Errors",
+      "enabled": true,
+      "matcher": { "Text": "ERROR" },
+      "caseSensitive": false,
+      "style": {
+        "foreground": "red",
+        "background": "default"
+      }
+    },
+    {
+      "name": "Warnings",
+      "enabled": true,
+      "matcher": { "Regex": "^WARN\\b" },
+      "caseSensitive": false,
+      "style": {
+        "foreground": "yellow",
+        "background": "default"
+      }
+    },
+    {
+      "name": "Debug (disabled)",
+      "enabled": false,
+      "matcher": { "Text": "DEBUG" },
+      "caseSensitive": false,
+      "style": {
+        "foreground": "cyan",
+        "background": "default"
+      }
+    }
+  ]
+}

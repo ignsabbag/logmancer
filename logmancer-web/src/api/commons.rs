@@ -1,3 +1,4 @@
+use logmancer_core::VisualRulesEnvelope;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -14,6 +15,21 @@ pub struct OpenServerFileResponse {
 pub struct ApiError {
     pub code: String,
     pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualRulesSaveRequest {
+    pub base_revision: u64,
+    pub envelope: VisualRulesEnvelope,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualRulesResponse {
+    pub revision: u64,
+    pub envelope: VisualRulesEnvelope,
+    pub diagnostics: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
