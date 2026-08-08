@@ -1,6 +1,6 @@
 use crate::handler::LogFileHandler;
-use crate::models::{FileInfo, LineStyleIntent, PageLine, PageResult, SearchStatus, VisualRule};
-use crate::visual_rules::VisualRuleEvaluator;
+use crate::models::{FileInfo, PageLine, PageResult, SearchStatus, VisualRule};
+use crate::{VisualRuleEvaluator, VisualRulesManager};
 use log::debug;
 use std::cmp::min;
 use std::io::{self};
@@ -8,7 +8,7 @@ use std::io::{self};
 pub struct LogReader {
     handler: LogFileHandler,
     current_view_start: usize,
-    visual_rule_evaluator: VisualRuleEvaluator,
+    visual_rules_manager: std::sync::Arc<VisualRulesManager>,
 }
 
 impl LogReader {
@@ -17,12 +17,35 @@ impl LogReader {
         Ok(LogReader {
             handler: file_log_handler,
             current_view_start: 0,
-            visual_rule_evaluator: VisualRuleEvaluator::default(),
+            visual_rules_manager: VisualRulesManager::in_memory(),
+        })
+    }
+
+    pub fn with_manager(
+        path: String,
+        visual_rules_manager: std::sync::Arc<VisualRulesManager>,
+    ) -> io::Result<Self> {
+        Ok(Self {
+            handler: LogFileHandler::new(path)?,
+            current_view_start: 0,
+            visual_rules_manager,
         })
     }
 
     pub fn set_visual_rules(&mut self, rules: Vec<VisualRule>) {
-        self.visual_rule_evaluator = VisualRuleEvaluator::compile(&rules);
+        let managed = rules
+            .into_iter()
+            .map(|rule| crate::ManagedVisualRule {
+                name: None,
+                enabled: true,
+                matcher: rule.matcher,
+                case_sensitive: rule.case_sensitive,
+                style: rule.style,
+            })
+            .collect();
+        let _ = self
+            .visual_rules_manager
+            .apply_memory(crate::VisualRulesEnvelope::new(managed));
     }
 
     /// Return file_id, path and other info about the open file
@@ -44,9 +67,10 @@ impl LogReader {
         let to_line = min(start_line + max_lines, read_ops.total_lines()?);
         let from_line = to_line.saturating_sub(max_lines);
         let mut lines = Vec::with_capacity(max_lines);
+        let evaluator = self.visual_rules_manager.snapshot();
         for current_line in from_line..to_line {
             let text = read_ops.read_line(current_line)?;
-            lines.push(self.page_line(current_line + 1, text));
+            lines.push(Self::page_line(&evaluator, current_line + 1, text));
         }
         let page = PageResult {
             lines,
@@ -69,9 +93,10 @@ impl LogReader {
         let total_lines = read_ops.total_lines()?;
         let start_line = total_lines.saturating_sub(max_lines);
         let mut lines = Vec::with_capacity(max_lines);
+        let evaluator = self.visual_rules_manager.snapshot();
         for current_line in start_line..total_lines {
             let text = read_ops.read_line(current_line)?;
-            lines.push(self.page_line(current_line + 1, text));
+            lines.push(Self::page_line(&evaluator, current_line + 1, text));
         }
         let page = PageResult {
             lines,
@@ -98,12 +123,13 @@ impl LogReader {
         let mut current_line = 0;
         let mut lines = Vec::with_capacity(max_lines);
         let mut visible_line_indexes = Vec::with_capacity(max_lines);
+        let evaluator = self.visual_rules_manager.snapshot();
 
         while lines.len() < max_lines && current_line < processed_lines {
             if let Some(line) = read_ops.read_filter_line(current_line)? {
                 if matched_lines >= start_line {
                     visible_line_indexes.push(current_line);
-                    lines.push(self.page_line(current_line + 1, line));
+                    lines.push(Self::page_line(&evaluator, current_line + 1, line));
                 }
                 matched_lines += 1;
             }
@@ -129,12 +155,13 @@ impl LogReader {
         let mut lines = Vec::with_capacity(max_lines);
         let mut visible_line_indexes = Vec::with_capacity(max_lines);
         let mut current_line = read_ops.total_lines()?;
+        let evaluator = self.visual_rules_manager.snapshot();
 
         while lines.len() < max_lines && current_line > 0 {
             current_line -= 1;
             if let Some(line) = read_ops.read_filter_line(current_line)? {
                 visible_line_indexes.push(current_line);
-                lines.push(self.page_line(current_line + 1, line));
+                lines.push(Self::page_line(&evaluator, current_line + 1, line));
             }
         }
         lines.reverse();
@@ -187,17 +214,13 @@ impl LogReader {
         self.read_page(start, max_lines)
     }
 
-    fn page_line(&self, number: usize, text: String) -> PageLine {
-        let style = self.evaluate_style(&text);
+    fn page_line(evaluator: &VisualRuleEvaluator, number: usize, text: String) -> PageLine {
+        let style = evaluator.evaluate(&text);
         PageLine {
             number,
             text,
             style,
         }
-    }
-
-    fn evaluate_style(&self, line: &str) -> Option<LineStyleIntent> {
-        self.visual_rule_evaluator.evaluate(line)
     }
 }
 

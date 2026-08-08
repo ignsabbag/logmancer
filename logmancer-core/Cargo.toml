@@ -11,6 +11,13 @@ dashmap = "6.1.0"
 uuid = {  version = "1.16.0", features = ['v4'] }
 crossbeam-channel = "0.5.15"
 serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.145", optional = true }
+atomic-write-file = { version = "0.3.0", optional = true }
+sha2 = { version = "0.10.9", optional = true }
 
 [features]
 wasm = ["uuid/js"]
+native-persistence = ["dep:atomic-write-file", "dep:serde_json", "dep:sha2", "dep:windows-sys"]
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"], optional = true }

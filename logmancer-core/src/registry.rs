@@ -1,4 +1,4 @@
-use crate::LogReader;
+use crate::{LogReader, VisualRulesManager};
 use dashmap::DashMap;
 use dashmap::mapref::one::RefMut;
 use std::io;
@@ -7,19 +7,28 @@ use uuid::Uuid;
 
 pub struct LogRegistry {
     open_files: Arc<DashMap<Uuid, LogReader>>,
+    visual_rules_manager: Arc<VisualRulesManager>,
 }
 
 impl LogRegistry {
     pub fn new() -> Self {
         LogRegistry {
             open_files: Arc::new(DashMap::new()),
+            visual_rules_manager: VisualRulesManager::in_memory(),
+        }
+    }
+
+    pub fn with_manager(visual_rules_manager: Arc<VisualRulesManager>) -> Self {
+        Self {
+            open_files: Arc::new(DashMap::new()),
+            visual_rules_manager,
         }
     }
 
     /// Opens a new file and register with a UUID
     pub fn open_file(&self, path: &str) -> io::Result<String> {
         let uuid = Uuid::new_v4();
-        let reader = LogReader::new(path.to_string());
+        let reader = LogReader::with_manager(path.to_string(), self.visual_rules_manager.clone());
         self.open_files.insert(uuid, reader?);
         Ok(uuid.to_string())
     }
