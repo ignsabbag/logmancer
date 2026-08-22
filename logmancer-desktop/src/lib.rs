@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use logmancer_core::LogRegistry;
 use std::net::{TcpStream, ToSocketAddrs};
 #[cfg(any(feature = "embedded-server", test))]
