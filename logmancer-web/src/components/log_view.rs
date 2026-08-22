@@ -284,7 +284,7 @@ pub fn LogView() -> impl IntoView {
             tabindex="0"
         >
             <AppBar
-                path=file_path.get()
+                path=file_path
                 open_visual_rules=Callback::new(move |_| set_visual_rules_open.set(true))
                 visual_rules_button_ref=visual_rules_button_ref
             />
