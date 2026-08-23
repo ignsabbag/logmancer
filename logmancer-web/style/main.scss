@@ -566,8 +566,14 @@ body {
 .visual-rules-drawer { position: fixed; right: 0; top: 0; z-index: 10000; width: min(390px, 94vw); height: 100vh; overflow: auto; padding: 16px; background: #fff; box-shadow: -12px 0 30px rgba(15, 23, 42, .18); font-family: system-ui, sans-serif; }
 .visual-rules-drawer--closed { display: none; }
 .visual-rules-drawer header, .visual-rules-drawer footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.visual-rules-drawer__header-actions, .visual-rules-drawer__rule-actions { display: flex; gap: 4px; }
+.visual-rules-drawer__status { margin: 12px 0; color: #475569; }
 .visual-rules-drawer ol { margin: 12px 0; padding-left: 22px; }
-.visual-rules-drawer li { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.visual-rules-drawer__rule { margin: 8px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.visual-rules-drawer__rule-title { display: flex; align-items: center; gap: 4px; min-width: 0; font-weight: 600; }
+.visual-rules-drawer__rule-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.visual-rules-drawer__icon-button { min-width: 30px; padding: 4px 6px; font-size: 16px; line-height: 1; }
+.visual-rules-drawer__icon-button--danger { border-color: #fecaca; color: #b91c1c; }
 .visual-rules-modal-backdrop { position: fixed; inset: 0; z-index: 10001; display: grid; place-items: center; background: rgba(15, 23, 42, .45); }
 .visual-rules-modal { width: min(420px, 92vw); display: grid; gap: 12px; padding: 18px; border-radius: 10px; background: #fff; font-family: system-ui, sans-serif; }
 .visual-rules-modal label { display: grid; gap: 4px; }

@@ -389,13 +389,15 @@ mod tests {
 
     #[test]
     fn operation_status_surfaces_persistence_diagnostics() {
+        assert_eq!(operation_status("", &[]), "");
         assert_eq!(
-            operation_status(
-                "Saved visual rules.",
-                &["directory sync failed".to_string()]
-            ),
+            operation_status("", &["directory sync failed".to_string()]),
             "Persistence warning: directory sync failed"
         );
+
+        let mut state = VisualRulesEditorState::new(0, VisualRulesEnvelope::new(Vec::new()));
+        state.save_failed("Could not load visual rules.");
+        assert_eq!(state.status(), "Could not load visual rules.");
     }
 
     #[test]

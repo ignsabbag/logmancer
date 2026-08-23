@@ -41,8 +41,7 @@ pub fn VisualRules(
             leptos::task::spawn_local(async move {
                 match fetch_visual_rules().await {
                     Ok(response) => set_state.update(|state| {
-                        let message =
-                            operation_status("Loaded visual rules.", &response.diagnostics);
+                        let message = operation_status("", &response.diagnostics);
                         if state.load_saved_once(response.revision, response.envelope) {
                             state.save_failed(message);
                         }
@@ -140,33 +139,47 @@ pub fn VisualRules(
                     }
                 }
             }>
-                <header><h2>"Visual Rules"</h2><button type="button" on:click=move |_| {
-                    set_state.update(VisualRulesEditorState::collapse);
-                    set_state.update(|state| {
-                        let _ = state.close_drawer_with_escape();
-                    });
-                    set_open.set(false);
-                    if let Some(invoker) = invoker_ref.get() {
-                        request_animation_frame(move || {
-                            _ = invoker.focus();
-                        });
-                    }
-                }>"Close"</button></header>
-                <p role="status">{move || state.get().status().to_string()}</p>
-                <button type="button" on:click=move |_| {
-                    let index = state.get_untracked().envelope().rules.len();
-                    set_state.update(|state| state.add(new_rule()));
-                    set_state.update(|state| state.open_editor(index));
-                    set_editor.set(Some(index));
-                }>"Add"</button>
+                <header>
+                    <h2>"Visual Rules"</h2>
+                    <div class="visual-rules-drawer__header-actions">
+                        <button type="button" on:click=move |_| {
+                            let index = state.get_untracked().envelope().rules.len();
+                            set_state.update(|state| state.add(new_rule()));
+                            set_state.update(|state| state.open_editor(index));
+                            set_editor.set(Some(index));
+                        }>"Add"</button>
+                        <button type="button" on:click=move |_| {
+                            set_state.update(VisualRulesEditorState::collapse);
+                            set_state.update(|state| {
+                                let _ = state.close_drawer_with_escape();
+                            });
+                            set_open.set(false);
+                            if let Some(invoker) = invoker_ref.get() {
+                                request_animation_frame(move || {
+                                    _ = invoker.focus();
+                                });
+                            }
+                        }>"Close"</button>
+                    </div>
+                </header>
+                <Show when=move || !state.get().status().is_empty()>
+                    <p class="visual-rules-drawer__status" role="status">{move || state.get().status().to_string()}</p>
+                </Show>
                 <ol>{move || state.get().envelope().rules.clone().into_iter().enumerate().map(|(index, rule)| view! {
-                    <li><button type="button" on:click=move |_| {
-                        set_state.update(|state| state.open_editor(index));
-                        set_editor.set(Some(index));
-                    }>{rule.name.unwrap_or_else(|| "Unnamed rule".to_string())}</button>
-                        <button type="button" on:click=move |_| set_state.update(|state| state.move_rule(index, -1))>"Move up"</button>
-                        <button type="button" on:click=move |_| set_state.update(|state| state.move_rule(index, 1))>"Move down"</button>
-                        <button type="button" on:click=move |_| set_state.update(|state| state.remove(index))>"Remove"</button></li>
+                    <li class="visual-rules-drawer__rule">
+                        <div class="visual-rules-drawer__rule-title">
+                            <span>{rule.name.unwrap_or_else(|| "Unnamed rule".to_string())}</span>
+                            <button class="visual-rules-drawer__icon-button" type="button" aria-label="Edit rule" title="Edit rule" on:click=move |_| {
+                                set_state.update(|state| state.open_editor(index));
+                                set_editor.set(Some(index));
+                            }>"✎"</button>
+                        </div>
+                        <div class="visual-rules-drawer__rule-actions">
+                            <button class="visual-rules-drawer__icon-button" type="button" aria-label="Move rule up" title="Move rule up" on:click=move |_| set_state.update(|state| state.move_rule(index, -1))>"↑"</button>
+                            <button class="visual-rules-drawer__icon-button" type="button" aria-label="Move rule down" title="Move rule down" on:click=move |_| set_state.update(|state| state.move_rule(index, 1))>"↓"</button>
+                            <button class="visual-rules-drawer__icon-button visual-rules-drawer__icon-button--danger" type="button" aria-label="Remove rule" title="Remove rule" on:click=move |_| set_state.update(|state| state.remove(index))>"×"</button>
+                        </div>
+                    </li>
                 }).collect_view()}</ol>
                 <footer><button type="button" on:click=discard>"Discard"</button><button type="button" on:click=reload>"Reload latest"</button><button type="button" disabled=move || !state.get().ordinary_save_allowed() on:click=move |_| persist(false)>"Save"</button><button type="button" on:click=move |_| persist(true)>"Replace"</button></footer>
             </aside>
