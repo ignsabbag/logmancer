@@ -14,6 +14,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- Visual-rules configuration retains only the 10 most recent backups after updates.
 - Visual-rules saving now creates or updates automatically, with clear conflict recovery controls.
 - Visual-rules drawer controls are more compact, with clearer rule editing and action hierarchy.
 - Persisted visual-rules configuration is now formatted as readable multi-line JSON.

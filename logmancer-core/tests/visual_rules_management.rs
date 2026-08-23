@@ -60,7 +60,7 @@ fn envelope_with_serialized_size(target: usize) -> VisualRulesEnvelope {
         style: style(Some("red"), Some("default")),
     };
     let mut envelope = VisualRulesEnvelope::new(vec![empty_rule; 100]);
-    let baseline = serde_json::to_vec(&envelope)
+    let baseline = serde_json::to_vec_pretty(&envelope)
         .expect("serialize baseline envelope")
         .len();
     let extra = target
@@ -82,7 +82,7 @@ fn envelope_with_serialized_size(target: usize) -> VisualRulesEnvelope {
     }
     assert_eq!((escaped, ascii), (0, 0));
     assert!(envelope.validate_for_save().is_ok());
-    let size = serde_json::to_vec(&envelope)
+    let size = serde_json::to_vec_pretty(&envelope)
         .expect("serialize boundary envelope")
         .len();
     assert_eq!(size, target);
@@ -814,7 +814,7 @@ fn oversized_tail_change_conflicts_until_the_complete_source_is_reloaded() {
     assert_eq!(repaired.outcome, SaveOutcome::Committed);
     assert_eq!(
         std::fs::read(&path).expect("read repaired source"),
-        serde_json::to_vec(&VisualRulesEnvelope::new(vec![rule("WARN")]))
+        serde_json::to_vec_pretty(&VisualRulesEnvelope::new(vec![rule("WARN")]))
             .expect("serialize repaired source")
     );
     assert_eq!(
@@ -965,7 +965,7 @@ fn separate_native_stores_serialize_concurrent_manager_replacements() {
     );
     assert_eq!(
         std::fs::read(&path).expect("read committed source"),
-        serde_json::to_vec(&VisualRulesEnvelope::new(vec![rule("WARN")]))
+        serde_json::to_vec_pretty(&VisualRulesEnvelope::new(vec![rule("WARN")]))
             .expect("serialize committed replacement")
     );
 
