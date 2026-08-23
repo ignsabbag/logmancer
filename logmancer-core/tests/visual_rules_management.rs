@@ -60,7 +60,7 @@ fn envelope_with_serialized_size(target: usize) -> VisualRulesEnvelope {
         style: style(Some("red"), Some("default")),
     };
     let mut envelope = VisualRulesEnvelope::new(vec![empty_rule; 100]);
-    let baseline = serde_json::to_vec(&envelope)
+    let baseline = serde_json::to_vec_pretty(&envelope)
         .expect("serialize baseline envelope")
         .len();
     let extra = target
@@ -82,7 +82,7 @@ fn envelope_with_serialized_size(target: usize) -> VisualRulesEnvelope {
     }
     assert_eq!((escaped, ascii), (0, 0));
     assert!(envelope.validate_for_save().is_ok());
-    let size = serde_json::to_vec(&envelope)
+    let size = serde_json::to_vec_pretty(&envelope)
         .expect("serialize boundary envelope")
         .len();
     assert_eq!(size, target);
@@ -405,7 +405,7 @@ fn separate_processes_serialize_native_compare_and_commit() {
 }
 
 #[test]
-fn native_persistence_handles_missing_first_save_replace_and_source_conflicts() {
+fn native_persistence_upsert_creates_updates_and_preserves_source_conflicts() {
     let path = temp_config_path("visual-rules-persistence");
     let store = NativeVisualRulesStore::new(path.clone());
     let manager = VisualRulesManager::with_store(std::sync::Arc::new(store));
@@ -415,17 +415,17 @@ fn native_persistence_handles_missing_first_save_replace_and_source_conflicts() 
     assert!(loaded.envelope.rules.is_empty());
 
     let saved = manager
-        .save(
+        .upsert(
             loaded.revision,
             VisualRulesEnvelope::new(vec![rule("ERROR")]),
         )
-        .expect("first save");
+        .expect("first upsert");
     assert_eq!(saved.outcome, SaveOutcome::Committed);
     assert!(path.exists());
 
     let replaced = manager
-        .replace(saved.revision, VisualRulesEnvelope::new(vec![rule("WARN")]))
-        .expect("replace creates a backup before publication");
+        .upsert(saved.revision, VisualRulesEnvelope::new(vec![rule("WARN")]))
+        .expect("upsert replaces an existing configuration with a backup");
     assert_eq!(replaced.outcome, SaveOutcome::Committed);
     let backup_prefix = path
         .file_stem()
@@ -456,7 +456,7 @@ fn native_persistence_handles_missing_first_save_replace_and_source_conflicts() 
     );
 
     std::fs::write(&path, "{\"schemaVersion\":1,\"rules\":[]}").expect("external write");
-    let conflict = manager.save(
+    let conflict = manager.upsert(
         replaced.revision,
         VisualRulesEnvelope::new(vec![rule("INFO")]),
     );
@@ -814,7 +814,7 @@ fn oversized_tail_change_conflicts_until_the_complete_source_is_reloaded() {
     assert_eq!(repaired.outcome, SaveOutcome::Committed);
     assert_eq!(
         std::fs::read(&path).expect("read repaired source"),
-        serde_json::to_vec(&VisualRulesEnvelope::new(vec![rule("WARN")]))
+        serde_json::to_vec_pretty(&VisualRulesEnvelope::new(vec![rule("WARN")]))
             .expect("serialize repaired source")
     );
     assert_eq!(
@@ -965,7 +965,7 @@ fn separate_native_stores_serialize_concurrent_manager_replacements() {
     );
     assert_eq!(
         std::fs::read(&path).expect("read committed source"),
-        serde_json::to_vec(&VisualRulesEnvelope::new(vec![rule("WARN")]))
+        serde_json::to_vec_pretty(&VisualRulesEnvelope::new(vec![rule("WARN")]))
             .expect("serialize committed replacement")
     );
 

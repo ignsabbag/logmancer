@@ -200,7 +200,7 @@ impl VisualRulesManager {
         base_revision: u64,
         envelope: VisualRulesEnvelope,
     ) -> Result<SaveResult, VisualRulesError> {
-        self.persist(base_revision, envelope, false)
+        self.persist(base_revision, envelope, Some(false))
     }
 
     #[cfg(feature = "native-persistence")]
@@ -209,7 +209,16 @@ impl VisualRulesManager {
         base_revision: u64,
         envelope: VisualRulesEnvelope,
     ) -> Result<SaveResult, VisualRulesError> {
-        self.persist(base_revision, envelope, true)
+        self.persist(base_revision, envelope, Some(true))
+    }
+
+    #[cfg(feature = "native-persistence")]
+    pub fn upsert(
+        &self,
+        base_revision: u64,
+        envelope: VisualRulesEnvelope,
+    ) -> Result<SaveResult, VisualRulesError> {
+        self.persist(base_revision, envelope, None)
     }
 
     #[cfg(feature = "native-persistence")]
@@ -217,12 +226,12 @@ impl VisualRulesManager {
         &self,
         base_revision: u64,
         envelope: VisualRulesEnvelope,
-        replace: bool,
+        replace: Option<bool>,
     ) -> Result<SaveResult, VisualRulesError> {
         let report = envelope
             .validate_for_save()
             .map_err(|error| VisualRulesError::Validation(error.message))?;
-        let bytes = serde_json::to_vec(&envelope)
+        let bytes = serde_json::to_vec_pretty(&envelope)
             .map_err(|error| VisualRulesError::Decode(error.to_string()))?;
         if bytes.len() > VisualRulesEnvelope::MAX_PERSISTED_SIZE {
             return Err(VisualRulesError::Validation(
@@ -233,6 +242,7 @@ impl VisualRulesManager {
         if state.revision != base_revision {
             return Err(VisualRulesError::RevisionConflict);
         }
+        let replace = replace.unwrap_or(state.source.is_some());
         let store = self.store.as_ref().expect("native store");
         let commit = store
             .compare_and_commit(state.source.as_deref(), &bytes, replace)
@@ -415,5 +425,16 @@ mod tests {
         assert_eq!(state.envelope, envelope("WARN"));
         assert!(manager.snapshot().evaluate("WARN").is_some());
         assert_eq!(manager.snapshot().evaluate("ERROR"), None);
+        let persisted = store
+            .bytes
+            .lock()
+            .expect("store lock")
+            .clone()
+            .expect("persisted rules");
+        assert!(
+            std::str::from_utf8(&persisted)
+                .expect("persisted rules are UTF-8 JSON")
+                .contains("\n  \"schemaVersion\"")
+        );
     }
 }

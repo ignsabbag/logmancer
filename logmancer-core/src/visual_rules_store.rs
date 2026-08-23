@@ -13,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 static TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static COMMIT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 const OVERSIZED_TOKEN_DOMAIN: &[u8] = b"logmancer:visual-rules:oversized:sha256:v1\0";
+const MAX_RETAINED_BACKUPS: usize = 10;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StoreCommit {
@@ -216,7 +217,10 @@ impl AtomicFileReplacer for NativeAtomicFileReplacer {
         let mut file = AtomicWriteFile::options().open(path)?;
         file.write_all(bytes)?;
         file.commit()?;
-        match sync_parent(path) {
+        let sync_result = sync_parent(path);
+        // Retention is best-effort: a cleanup failure must not undo a committed update.
+        let _ = prune_backups(path);
+        match sync_result {
             Ok(()) => Ok(StoreCommit::Committed),
             Err(error) => Ok(StoreCommit::with_warning(error.to_string())),
         }
@@ -244,6 +248,38 @@ fn timestamped_backup_path(path: &Path) -> io::Result<PathBuf> {
     Ok(path.with_extension(format!("{timestamp}.bak")))
 }
 
+fn prune_backups(path: &Path) -> io::Result<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("visual-rules");
+    let prefix = format!("{stem}.");
+    let mut backups = Vec::new();
+
+    for entry in fs::read_dir(parent)? {
+        let entry = entry?;
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        let Some(timestamp) = name
+            .strip_prefix(&prefix)
+            .and_then(|name| name.strip_suffix(".bak"))
+            .and_then(|timestamp| timestamp.parse::<u128>().ok())
+        else {
+            continue;
+        };
+        backups.push((timestamp, entry.path()));
+    }
+
+    backups.sort_unstable_by_key(|(timestamp, _)| *timestamp);
+    let expired = backups.len().saturating_sub(MAX_RETAINED_BACKUPS);
+    for (_, backup) in backups.into_iter().take(expired) {
+        fs::remove_file(backup)?;
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 fn sync_parent(path: &Path) -> io::Result<()> {
     File::open(path.parent().unwrap_or_else(|| Path::new(".")))?.sync_all()
@@ -252,4 +288,39 @@ fn sync_parent(path: &Path) -> io::Result<()> {
 #[cfg(not(unix))]
 fn sync_parent(_path: &Path) -> io::Result<()> {
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pruning_retains_recent_backups_without_touching_unrelated_files() {
+        let directory = std::env::temp_dir().join(format!(
+            "logmancer-visual-rules-backups-{}-{}",
+            std::process::id(),
+            TEMPORARY_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&directory).expect("create temporary directory");
+        let config = directory.join("visual-rules.json");
+        let unrelated = directory.join("other.1.bak");
+        fs::write(&unrelated, "unrelated backup").expect("write unrelated backup");
+
+        for timestamp in 1..=12 {
+            fs::write(config.with_extension(format!("{timestamp}.bak")), "backup")
+                .expect("write visual rules backup");
+        }
+
+        prune_backups(&config).expect("prune backups");
+
+        for timestamp in 1..=2 {
+            assert!(!config.with_extension(format!("{timestamp}.bak")).exists());
+        }
+        for timestamp in 3..=12 {
+            assert!(config.with_extension(format!("{timestamp}.bak")).exists());
+        }
+        assert!(unrelated.exists());
+
+        fs::remove_dir_all(directory).expect("remove temporary directory");
+    }
 }

@@ -101,32 +101,38 @@ async fn request_visual_rules(
 pub async fn save_visual_rules(
     base_revision: u64,
     envelope: logmancer_core::VisualRulesEnvelope,
-    replace: bool,
-) -> Result<VisualRulesResponse, String> {
-    let base = window()
-        .location()
-        .origin()
-        .map_err(|_| "Could not detect application origin.".to_string())?;
+) -> Result<VisualRulesResponse, VisualRulesSaveError> {
+    let base = window().location().origin().map_err(|_| {
+        VisualRulesSaveError::Message("Could not detect application origin.".to_string())
+    })?;
     let response = reqwest::Client::new()
-        .post(format!(
-            "{base}/api/visual-rules/{}",
-            if replace { "replace" } else { "save" }
-        ))
+        .post(format!("{base}/api/visual-rules/save"))
         .json(&VisualRulesSaveRequest {
             base_revision,
             envelope,
         })
         .send()
         .await
-        .map_err(|_| "Could not connect to the server.".to_string())?;
+        .map_err(|_| {
+            VisualRulesSaveError::Message("Could not connect to the server.".to_string())
+        })?;
     if response.status().is_success() {
-        response
-            .json()
-            .await
-            .map_err(|_| "Could not parse saved visual rules.".to_string())
+        response.json().await.map_err(|_| {
+            VisualRulesSaveError::Message("Could not parse saved visual rules.".to_string())
+        })
+    } else if response.status() == reqwest::StatusCode::CONFLICT {
+        Err(VisualRulesSaveError::Conflict)
     } else {
-        Err(parse_api_error_message(response, "Could not save visual rules.").await)
+        Err(VisualRulesSaveError::Message(
+            parse_api_error_message(response, "Could not save visual rules.").await,
+        ))
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+pub enum VisualRulesSaveError {
+    Conflict,
+    Message(String),
 }
 
 pub async fn apply_filter(file_id: String, filter: String) -> Result<String, ServerFnError> {
