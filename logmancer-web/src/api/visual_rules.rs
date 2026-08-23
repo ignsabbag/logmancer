@@ -29,7 +29,7 @@ pub async fn save_visual_rules(
     let envelope = request.envelope.clone();
     match app_state
         .visual_rules_manager
-        .save(request.base_revision, request.envelope)
+        .upsert(request.base_revision, request.envelope)
     {
         Ok(result) => {
             (StatusCode::OK, Json(visual_rules_success(result, envelope))).into_response()
@@ -53,22 +53,6 @@ pub async fn retry_visual_rules(State(app_state): State<AppState>) -> Response {
             }),
         )
             .into_response(),
-        Err(error) => visual_rules_error(error),
-    }
-}
-
-pub async fn replace_visual_rules(
-    State(app_state): State<AppState>,
-    Json(request): Json<VisualRulesSaveRequest>,
-) -> Response {
-    let envelope = request.envelope.clone();
-    match app_state
-        .visual_rules_manager
-        .replace(request.base_revision, request.envelope)
-    {
-        Ok(result) => {
-            (StatusCode::OK, Json(visual_rules_success(result, envelope))).into_response()
-        }
         Err(error) => visual_rules_error(error),
     }
 }

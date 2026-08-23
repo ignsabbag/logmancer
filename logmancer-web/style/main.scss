@@ -570,7 +570,7 @@ body {
 .visual-rules-drawer__status { margin: 12px 0; color: #475569; }
 .visual-rules-drawer ol { margin: 12px 0; padding-left: 22px; }
 .visual-rules-drawer__rule { margin: 8px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.visual-rules-drawer__rule-title { display: flex; align-items: center; gap: 4px; min-width: 0; font-weight: 600; }
+.visual-rules-drawer__rule-title { min-width: 0; font-weight: 600; }
 .visual-rules-drawer__rule-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .visual-rules-drawer__icon-button { min-width: 30px; padding: 4px 6px; font-size: 16px; line-height: 1; }
 .visual-rules-drawer__icon-button--danger { border-color: #fecaca; color: #b91c1c; }

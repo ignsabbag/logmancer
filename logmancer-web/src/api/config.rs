@@ -6,9 +6,7 @@ use crate::api::server_browser::{
     server_browser_list, server_browser_open, server_browser_status, ServerFileRoot,
 };
 use crate::api::upload_file::upload_file;
-use crate::api::visual_rules::{
-    get_visual_rules, replace_visual_rules, retry_visual_rules, save_visual_rules,
-};
+use crate::api::visual_rules::{get_visual_rules, retry_visual_rules, save_visual_rules};
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
@@ -48,7 +46,6 @@ pub fn api_routes_with_registry_and_manager<T>(
         .route("/visual-rules", get(get_visual_rules))
         .route("/visual-rules/save", post(save_visual_rules))
         .route("/visual-rules/retry", post(retry_visual_rules))
-        .route("/visual-rules/replace", post(replace_visual_rules))
         .layer(DefaultBodyLimit::max(LOG_UPLOAD_BODY_LIMIT_BYTES))
         .with_state(AppState {
             registry,

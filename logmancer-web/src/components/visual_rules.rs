@@ -1,9 +1,13 @@
 #[cfg(target_arch = "wasm32")]
-use crate::browser_api_client::{fetch_visual_rules, retry_visual_rules, save_visual_rules};
+use crate::browser_api_client::{
+    fetch_visual_rules, retry_visual_rules, save_visual_rules, VisualRulesSaveError,
+};
 use crate::components::visual_rule_editor::{new_rule, VisualRuleEditor};
 #[cfg(target_arch = "wasm32")]
 use crate::visual_rules_state::operation_status;
 use crate::visual_rules_state::VisualRulesEditorState;
+#[cfg(target_arch = "wasm32")]
+use crate::visual_rules_state::VisualRulesRecoveryAction;
 use leptos::html;
 use leptos::prelude::*;
 use logmancer_core::{ManagedVisualRule, VisualRulesEnvelope};
@@ -52,32 +56,17 @@ pub fn VisualRules(
         }
     });
 
-    let discard = move |_| set_state.update(VisualRulesEditorState::discard);
-    let persist = move |_replace: bool| {
+    let persist = move |_| {
         #[cfg(target_arch = "wasm32")]
         {
             let current = state.get();
-            if !_replace && !current.ordinary_save_allowed() {
-                set_state.update(|state| {
-                    state.save_failed(
-                    "Reload preserved a conflicting draft. Use Replace or Discard before saving.",
-                )
-                });
-                return;
-            }
             let operation = set_state
                 .try_update(VisualRulesEditorState::begin_operation)
                 .expect("visual rules state");
             leptos::task::spawn_local(async move {
-                match save_visual_rules(current.revision(), current.envelope().clone(), _replace)
-                    .await
-                {
+                match save_visual_rules(current.revision(), current.envelope().clone()).await {
                     Ok(response) => set_state.update(|state| {
-                        let action = if _replace { "Replaced" } else { "Saved" };
-                        let message = operation_status(
-                            &format!("{action} visual rules."),
-                            &response.diagnostics,
-                        );
+                        let message = operation_status("Saved", &response.diagnostics);
                         let accepted = state.save_succeeded_for(
                             operation,
                             response.revision,
@@ -86,22 +75,31 @@ pub fn VisualRules(
                         );
                         notify_after_accepted_save(accepted, || on_saved.run(()));
                     }),
-                    Err(error) => set_state.update(|state| state.save_failed(error)),
+                    Err(VisualRulesSaveError::Conflict) => {
+                        set_state.update(VisualRulesEditorState::save_conflicted)
+                    }
+                    Err(VisualRulesSaveError::Message(error)) => {
+                        set_state.update(|state| state.save_failed(error))
+                    }
                 }
             });
         }
     };
-    let reload = move |_| {
+    let recover = move |_| {
         #[cfg(target_arch = "wasm32")]
         {
+            let action = state.get_untracked().recovery_action();
+            if action == VisualRulesRecoveryAction::Discard {
+                set_state.update(VisualRulesEditorState::discard);
+                return;
+            }
             let operation = set_state
-                .try_update(VisualRulesEditorState::begin_operation)
+                .try_update(VisualRulesEditorState::begin_reload)
                 .expect("visual rules state");
             leptos::task::spawn_local(async move {
                 match retry_visual_rules().await {
                     Ok(response) => set_state.update(|state| {
-                        let message =
-                            operation_status("Loaded visual rules.", &response.diagnostics);
+                        let message = operation_status("", &response.diagnostics);
                         state.reload_saved_for(
                             operation,
                             response.revision,
@@ -129,6 +127,7 @@ pub fn VisualRules(
                     event.prevent_default();
                     set_state.update(VisualRulesEditorState::collapse);
                     set_state.update(|state| {
+                        state.clear_success_status_on_close();
                         let _ = state.close_drawer_with_escape();
                     });
                     set_open.set(false);
@@ -151,6 +150,7 @@ pub fn VisualRules(
                         <button type="button" on:click=move |_| {
                             set_state.update(VisualRulesEditorState::collapse);
                             set_state.update(|state| {
+                                state.clear_success_status_on_close();
                                 let _ = state.close_drawer_with_escape();
                             });
                             set_open.set(false);
@@ -169,19 +169,19 @@ pub fn VisualRules(
                     <li class="visual-rules-drawer__rule">
                         <div class="visual-rules-drawer__rule-title">
                             <span>{rule.name.unwrap_or_else(|| "Unnamed rule".to_string())}</span>
+                        </div>
+                        <div class="visual-rules-drawer__rule-actions">
                             <button class="visual-rules-drawer__icon-button" type="button" aria-label="Edit rule" title="Edit rule" on:click=move |_| {
                                 set_state.update(|state| state.open_editor(index));
                                 set_editor.set(Some(index));
                             }>"✎"</button>
-                        </div>
-                        <div class="visual-rules-drawer__rule-actions">
                             <button class="visual-rules-drawer__icon-button" type="button" aria-label="Move rule up" title="Move rule up" on:click=move |_| set_state.update(|state| state.move_rule(index, -1))>"↑"</button>
                             <button class="visual-rules-drawer__icon-button" type="button" aria-label="Move rule down" title="Move rule down" on:click=move |_| set_state.update(|state| state.move_rule(index, 1))>"↓"</button>
                             <button class="visual-rules-drawer__icon-button visual-rules-drawer__icon-button--danger" type="button" aria-label="Remove rule" title="Remove rule" on:click=move |_| set_state.update(|state| state.remove(index))>"×"</button>
                         </div>
                     </li>
                 }).collect_view()}</ol>
-                <footer><button type="button" on:click=discard>"Discard"</button><button type="button" on:click=reload>"Reload latest"</button><button type="button" disabled=move || !state.get().ordinary_save_allowed() on:click=move |_| persist(false)>"Save"</button><button type="button" on:click=move |_| persist(true)>"Replace"</button></footer>
+                <footer><button type="button" on:click=recover>{move || state.get().recovery_action().label()}</button><button type="button" on:click=persist>"Apply and save"</button></footer>
             </aside>
             {move || editor.get().map(|index| {
                 let rule = state.get().envelope().rules.get(index).cloned().unwrap_or_else(new_rule);

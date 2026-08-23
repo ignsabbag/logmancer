@@ -11,7 +11,7 @@ pub struct VisualRulesEditorState {
     focus_target: VisualRulesFocusTarget,
     loaded_from_server: bool,
     operation_generation: u64,
-    requires_replace: bool,
+    conflicted: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -23,6 +23,23 @@ pub enum VisualRulesFocusTarget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VisualRulesFocusRequest {
     Invoker,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VisualRulesRecoveryAction {
+    Reload,
+    Discard,
+    DiscardAndReload,
+}
+
+impl VisualRulesRecoveryAction {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Reload => "Reload",
+            Self::Discard => "Discard",
+            Self::DiscardAndReload => "Discard and reload",
+        }
+    }
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
@@ -38,7 +55,7 @@ impl VisualRulesEditorState {
             focus_target: VisualRulesFocusTarget::Invoker,
             loaded_from_server: false,
             operation_generation: 0,
-            requires_replace: false,
+            conflicted: false,
         }
     }
 
@@ -59,8 +76,18 @@ impl VisualRulesEditorState {
         self.operation_generation
     }
 
-    pub fn ordinary_save_allowed(&self) -> bool {
-        !self.requires_replace
+    pub fn has_unsaved_changes(&self) -> bool {
+        self.envelope != self.baseline
+    }
+
+    pub fn recovery_action(&self) -> VisualRulesRecoveryAction {
+        if self.conflicted {
+            VisualRulesRecoveryAction::DiscardAndReload
+        } else if self.has_unsaved_changes() {
+            VisualRulesRecoveryAction::Discard
+        } else {
+            VisualRulesRecoveryAction::Reload
+        }
     }
 
     pub fn open_drawer(&mut self) {
@@ -110,8 +137,7 @@ impl VisualRulesEditorState {
         if !has_local_edits {
             self.envelope = envelope;
         } else {
-            self.requires_replace = true;
-            self.status = "Draft preserved; use Replace or Discard before saving.".to_string();
+            self.status = "Draft preserved.".to_string();
         }
         self.loaded_from_server = true;
         true
@@ -127,18 +153,11 @@ impl VisualRulesEditorState {
         if operation != self.operation_generation {
             return false;
         }
-        let has_local_edits = self.envelope != self.baseline;
         self.baseline_revision = revision;
         self.baseline = envelope.clone();
-        if !has_local_edits {
-            self.envelope = envelope;
-        }
-        self.requires_replace = has_local_edits;
+        self.envelope = envelope;
+        self.conflicted = false;
         self.status = message.into();
-        if has_local_edits {
-            self.status
-                .push_str(" Draft preserved; use Replace or Discard before saving.");
-        }
         self.loaded_from_server = true;
         true
     }
@@ -168,25 +187,34 @@ impl VisualRulesEditorState {
 
     pub fn collapse(&mut self) {}
 
+    pub fn clear_success_status_on_close(&mut self) {
+        if self.status == "Saved" {
+            self.status.clear();
+        }
+    }
+
     pub fn discard(&mut self) {
         self.begin_operation();
         self.envelope = self.baseline.clone();
-        self.requires_replace = false;
-        self.status = "Discarded unsaved visual rule changes.".to_string();
+        self.conflicted = false;
+        self.status.clear();
+    }
+
+    pub fn begin_reload(&mut self) -> u64 {
+        self.envelope = self.baseline.clone();
+        self.conflicted = false;
+        self.status.clear();
+        self.begin_operation()
     }
 
     pub fn save_failed(&mut self, message: impl Into<String>) {
         self.status = message.into();
     }
 
-    pub fn save_succeeded(
-        &mut self,
-        revision: u64,
-        envelope: VisualRulesEnvelope,
-        message: impl Into<String>,
-    ) {
-        let operation = self.operation_generation;
-        self.save_succeeded_for(operation, revision, envelope, message);
+    pub fn save_conflicted(&mut self) {
+        self.conflicted = true;
+        self.status =
+            "Visual rules changed in another instance. Discard and reload to continue.".to_string();
     }
 
     pub fn save_succeeded_for(
@@ -207,7 +235,7 @@ impl VisualRulesEditorState {
         }
         self.status = message.into();
         self.loaded_from_server = true;
-        self.requires_replace = false;
+        self.conflicted = false;
         true
     }
 }
@@ -269,7 +297,8 @@ mod tests {
         assert_eq!(state.status(), "Configuration changed elsewhere.");
 
         let saved = state.envelope().clone();
-        state.save_succeeded(3, saved.clone(), "Saved visual rules.");
+        let operation = state.begin_operation();
+        assert!(state.save_succeeded_for(operation, 3, saved.clone(), "Saved"));
         state.add(rule("Debug", "DEBUG"));
         state.discard();
 
@@ -337,11 +366,11 @@ mod tests {
         assert!(state.load_saved_once(5, saved.clone()));
         assert_eq!(state.revision(), 5);
         assert_eq!(state.envelope().rules[0].name.as_deref(), Some("Local"));
-        assert!(!state.ordinary_save_allowed());
-        assert!(state.status().contains("Replace or Discard"));
+        assert!(state.has_unsaved_changes());
+        assert_eq!(state.recovery_action(), VisualRulesRecoveryAction::Discard);
         state.discard();
         assert_eq!(state.envelope().rules, saved.rules);
-        assert!(state.ordinary_save_allowed());
+        assert_eq!(state.recovery_action(), VisualRulesRecoveryAction::Reload);
     }
 
     #[test]
@@ -349,8 +378,9 @@ mod tests {
         let mut state = VisualRulesEditorState::new(1, VisualRulesEnvelope::new(Vec::new()));
         state.add(rule("Submitted", "ONE"));
         let submitted = state.envelope().clone();
+        let operation = state.begin_operation();
         state.add(rule("Later", "TWO"));
-        state.save_succeeded(2, submitted.clone(), "Saved visual rules.");
+        assert!(state.save_succeeded_for(operation, 2, submitted.clone(), "Saved"));
         assert_eq!(state.revision(), 2);
         assert_eq!(state.envelope().rules.len(), 2);
         state.discard();
@@ -358,19 +388,14 @@ mod tests {
     }
 
     #[test]
-    fn reload_rebases_revision_without_discarding_conflicting_draft() {
+    fn reload_replaces_the_editor_state_with_the_latest_configuration() {
         let mut state = VisualRulesEditorState::new(1, VisualRulesEnvelope::new(Vec::new()));
-        state.add(rule("Draft", "DRAFT"));
         let latest = VisualRulesEnvelope::new(vec![rule("Latest", "LATEST")]);
-        let operation = state.begin_operation();
+        let operation = state.begin_reload();
         state.reload_saved_for(operation, 4, latest.clone(), "Loaded visual rules.");
         assert_eq!(state.revision(), 4);
-        assert_eq!(state.envelope().rules[0].name.as_deref(), Some("Draft"));
-        assert!(!state.ordinary_save_allowed());
-        assert!(state.status().contains("Replace or Discard"));
-        state.discard();
         assert_eq!(state.envelope().rules, latest.rules);
-        assert!(state.ordinary_save_allowed());
+        assert_eq!(state.recovery_action(), VisualRulesRecoveryAction::Reload);
     }
 
     #[test]
@@ -384,7 +409,23 @@ mod tests {
         assert!(state.reload_saved_for(reload_operation, 4, latest, "Loaded visual rules.",));
         assert!(!state.save_succeeded_for(save_operation, 2, submitted, "Saved visual rules.",));
         assert_eq!(state.revision(), 4);
-        assert!(!state.ordinary_save_allowed());
+        assert_eq!(state.recovery_action(), VisualRulesRecoveryAction::Reload);
+    }
+
+    #[test]
+    fn recovery_action_changes_for_drafts_and_conflicts() {
+        let baseline = VisualRulesEnvelope::new(vec![rule("Errors", "ERROR")]);
+        let mut state = VisualRulesEditorState::new(1, baseline);
+
+        assert_eq!(state.recovery_action(), VisualRulesRecoveryAction::Reload);
+        state.add(rule("Warnings", "WARN"));
+        assert_eq!(state.recovery_action(), VisualRulesRecoveryAction::Discard);
+        state.save_conflicted();
+        assert_eq!(
+            state.recovery_action(),
+            VisualRulesRecoveryAction::DiscardAndReload
+        );
+        assert_eq!(state.recovery_action().label(), "Discard and reload");
     }
 
     #[test]
@@ -398,6 +439,23 @@ mod tests {
         let mut state = VisualRulesEditorState::new(0, VisualRulesEnvelope::new(Vec::new()));
         state.save_failed("Could not load visual rules.");
         assert_eq!(state.status(), "Could not load visual rules.");
+    }
+
+    #[test]
+    fn closing_clears_saved_status_but_preserves_warnings_and_errors() {
+        let mut state = VisualRulesEditorState::new(0, VisualRulesEnvelope::new(Vec::new()));
+
+        state.save_failed("Saved");
+        state.clear_success_status_on_close();
+        assert_eq!(state.status(), "");
+
+        state.save_failed("Persistence warning: directory sync failed");
+        state.clear_success_status_on_close();
+        assert_eq!(state.status(), "Persistence warning: directory sync failed");
+
+        state.save_failed("Could not save visual rules.");
+        state.clear_success_status_on_close();
+        assert_eq!(state.status(), "Could not save visual rules.");
     }
 
     #[test]

@@ -405,7 +405,7 @@ fn separate_processes_serialize_native_compare_and_commit() {
 }
 
 #[test]
-fn native_persistence_handles_missing_first_save_replace_and_source_conflicts() {
+fn native_persistence_upsert_creates_updates_and_preserves_source_conflicts() {
     let path = temp_config_path("visual-rules-persistence");
     let store = NativeVisualRulesStore::new(path.clone());
     let manager = VisualRulesManager::with_store(std::sync::Arc::new(store));
@@ -415,17 +415,17 @@ fn native_persistence_handles_missing_first_save_replace_and_source_conflicts() 
     assert!(loaded.envelope.rules.is_empty());
 
     let saved = manager
-        .save(
+        .upsert(
             loaded.revision,
             VisualRulesEnvelope::new(vec![rule("ERROR")]),
         )
-        .expect("first save");
+        .expect("first upsert");
     assert_eq!(saved.outcome, SaveOutcome::Committed);
     assert!(path.exists());
 
     let replaced = manager
-        .replace(saved.revision, VisualRulesEnvelope::new(vec![rule("WARN")]))
-        .expect("replace creates a backup before publication");
+        .upsert(saved.revision, VisualRulesEnvelope::new(vec![rule("WARN")]))
+        .expect("upsert replaces an existing configuration with a backup");
     assert_eq!(replaced.outcome, SaveOutcome::Committed);
     let backup_prefix = path
         .file_stem()
@@ -456,7 +456,7 @@ fn native_persistence_handles_missing_first_save_replace_and_source_conflicts() 
     );
 
     std::fs::write(&path, "{\"schemaVersion\":1,\"rules\":[]}").expect("external write");
-    let conflict = manager.save(
+    let conflict = manager.upsert(
         replaced.revision,
         VisualRulesEnvelope::new(vec![rule("INFO")]),
     );
