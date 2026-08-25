@@ -15,8 +15,8 @@ use tracing::{info, warn};
 #[cfg(feature = "embedded-server")]
 use {
     logmancer_web::{
-        file_opening::enable_desktop_ssr_runtime, start_leptos_with_registry_and_manager,
-        try_open_initial_file, visual_rules_runtime,
+        file_opening::enable_desktop_ssr_runtime, registry_runtime, start_leptos_with_registry,
+        try_open_initial_file,
     },
     tauri::WindowEvent,
 };
@@ -40,12 +40,10 @@ impl DesktopState {
 }
 
 #[cfg(any(feature = "embedded-server", test))]
-fn visual_rules_store_path(config_dir: Option<PathBuf>) -> Result<PathBuf, String> {
+fn config_directory(config_dir: Option<PathBuf>) -> Result<PathBuf, String> {
     config_dir
-        .map(|directory| directory.join("visual-rules.json"))
-        .ok_or_else(|| {
-            "Could not resolve the Tauri app configuration directory for visual rules.".to_string()
-        })
+        .filter(|directory| !directory.as_os_str().is_empty())
+        .ok_or_else(|| "Could not resolve the Tauri app configuration directory.".to_string())
 }
 
 fn wait_for_tcp_server<A>(addr: A, attempts: u32, delay: Duration) -> bool
@@ -193,8 +191,8 @@ mod tests {
     use std::time::Duration;
 
     #[test]
-    fn visual_rules_path_resolution_failure_writes_nowhere() {
-        let error = visual_rules_store_path(None).unwrap_err();
+    fn config_directory_resolution_failure_writes_nowhere() {
+        let error = config_directory(None).unwrap_err();
 
         assert!(error.contains("app configuration directory"));
     }
@@ -360,9 +358,9 @@ pub fn run() {
         info!("Desktop runtime configured for embedded SSR rendering");
 
         let state = app.state::<DesktopState>();
-        let visual_rules_path = visual_rules_store_path(app.path().app_config_dir().ok())
-            .map_err(std::io::Error::other)?;
-        let (registry, visual_rules_manager) = visual_rules_runtime(visual_rules_path);
+        let config_directory =
+            config_directory(app.path().app_config_dir().ok()).map_err(std::io::Error::other)?;
+        let registry = registry_runtime(config_directory, None);
         *state.registry.write().expect("desktop registry lock") = registry.clone();
         let initial_file_id = try_open_initial_file(&registry, initial_path.as_deref());
         let port = std::net::TcpListener::bind("127.0.0.1:0")
@@ -373,7 +371,7 @@ pub fn run() {
         info!("Spawning embedded SSR server on port={}", port);
         tauri::async_runtime::spawn(async move {
             info!("Embedded SSR server task started");
-            start_leptos_with_registry_and_manager(port, registry, visual_rules_manager).await
+            start_leptos_with_registry(port, registry).await
         });
         wait_for_embedded_server(port);
         let window = app.get_webview_window("main").unwrap();

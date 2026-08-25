@@ -7,7 +7,7 @@ use axum::Json;
 use logmancer_core::{SaveOutcome, SaveResult, VisualRulesEnvelope, VisualRulesError};
 
 pub async fn get_visual_rules(State(app_state): State<AppState>) -> impl IntoResponse {
-    let state = app_state.visual_rules_manager.state();
+    let state = app_state.registry.visual_rules_state();
     (
         StatusCode::OK,
         Json(VisualRulesResponse {
@@ -28,8 +28,8 @@ pub async fn save_visual_rules(
 ) -> Response {
     let envelope = request.envelope.clone();
     match app_state
-        .visual_rules_manager
-        .upsert(request.base_revision, request.envelope)
+        .registry
+        .upsert_visual_rules(request.base_revision, request.envelope)
     {
         Ok(result) => {
             (StatusCode::OK, Json(visual_rules_success(result, envelope))).into_response()
@@ -39,7 +39,7 @@ pub async fn save_visual_rules(
 }
 
 pub async fn retry_visual_rules(State(app_state): State<AppState>) -> Response {
-    match app_state.visual_rules_manager.load() {
+    match app_state.registry.reload_visual_rules() {
         Ok(state) => (
             StatusCode::OK,
             Json(VisualRulesResponse {

@@ -172,13 +172,12 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
     writeln!(file, "WARN cache").expect("write");
     drop(file);
 
-    let manager = VisualRulesManager::in_memory();
-    let registry = LogRegistry::with_manager(manager.clone());
+    let registry = LogRegistry::new();
     let first_id = registry
         .open_file(path.to_str().expect("path"))
         .expect("open first");
-    manager
-        .apply_memory(VisualRulesEnvelope::new(vec![rule("ERROR")]))
+    registry
+        .apply_visual_rules_memory(VisualRulesEnvelope::new(vec![rule("ERROR")]))
         .expect("apply first snapshot");
 
     wait_for_indexed_lines(&registry, &first_id, 3);
@@ -201,8 +200,8 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
         Some(style(Some("red"), Some("default")))
     );
 
-    manager
-        .apply_memory(VisualRulesEnvelope::new(vec![rule("WARN")]))
+    registry
+        .apply_visual_rules_memory(VisualRulesEnvelope::new(vec![rule("WARN")]))
         .expect("swap snapshot");
     let second_id = registry
         .open_file(path.to_str().expect("path"))
