@@ -2,7 +2,7 @@
 
 This roadmap describes the current direction for Logmancer. It is intentionally high-level: concrete implementation details should live in GitHub issues, design notes, or specifications when needed.
 
-## Current Version: 0.3.0
+## Current Version: 0.4.0
 
 Logmancer currently provides the core experience for fast log viewing, navigation, and search:
 
@@ -14,27 +14,13 @@ Logmancer currently provides the core experience for fast log viewing, navigatio
 - Selection and panel synchronization improvements.
 - `less`-style search with `/`, `n`, and `N`.
 - Search match highlighting and search status information where applicable.
+- Configurable visual rules for text or regex highlighting, priority, and persisted web/desktop configuration.
 
 Known gap:
 
 - The roadmap should continue being translated into concrete GitHub milestones and issues before implementation work starts.
 
 ## Planned Releases
-
-### 0.4.0 — Visual Rules
-
-Add configurable visual rules for highlighting important log lines without necessarily hiding other lines.
-
-- Define rules based on text or regex matches.
-- Define how visual metadata is represented in returned lines, such as a `LineStyle` or equivalent decoration model.
-- Configure foreground and background colors.
-- Provide a UI to create and edit visual rules.
-- Persist visual rules configuration for reuse.
-- Apply visual rules to matching lines.
-- Support rule priority when multiple rules match the same line.
-- Keep visual rules conceptually separate from filters:
-  - filters decide which lines are visible;
-  - visual rules decide how matching lines are displayed.
 
 ### 0.5.0 — Selected Text Occurrence Search
 

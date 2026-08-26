@@ -6,6 +6,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-26
+
 ### Added
 
 - Core visual rules foundation with UI-neutral rule models, text/regex matching, array-order priority, per-rule case sensitivity, safe invalid-rule handling, and optional line style metadata for foreground/background colors (#63, #64, #65, #66).
@@ -97,7 +99,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Web follow mode works, but does not yet expose a clear visual indicator.
 - Search, visual rules, structured parsing, and multi-file workspace improvements are planned but not part of `0.1.0`.
 
-[Unreleased]: https://github.com/ignsabbag/logmancer/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/ignsabbag/logmancer/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/ignsabbag/logmancer/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ignsabbag/logmancer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ignsabbag/logmancer/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ignsabbag/logmancer/releases/tag/v0.1.0
