@@ -10,7 +10,7 @@ use crate::api::visual_rules::{get_visual_rules, retry_visual_rules, save_visual
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
-use logmancer_core::{LogRegistry, VisualRulesManager};
+use logmancer_core::LogRegistry;
 use std::sync::Arc;
 
 const LOG_UPLOAD_BODY_LIMIT_BYTES: usize = 512 * 1024 * 1024;
@@ -18,14 +18,10 @@ const LOG_UPLOAD_BODY_LIMIT_BYTES: usize = 512 * 1024 * 1024;
 #[derive(Clone)]
 pub struct AppState {
     pub registry: Arc<LogRegistry>,
-    pub visual_rules_manager: Arc<VisualRulesManager>,
     pub server_file_root: Option<ServerFileRoot>,
 }
 
-pub fn api_routes_with_registry_and_manager<T>(
-    registry: Arc<LogRegistry>,
-    visual_rules_manager: Arc<VisualRulesManager>,
-) -> Router<T> {
+pub fn api_routes_with_registry<T>(registry: Arc<LogRegistry>) -> Router<T> {
     let server_file_root = ServerFileRoot::from_env();
 
     Router::new()
@@ -49,13 +45,8 @@ pub fn api_routes_with_registry_and_manager<T>(
         .layer(DefaultBodyLimit::max(LOG_UPLOAD_BODY_LIMIT_BYTES))
         .with_state(AppState {
             registry,
-            visual_rules_manager,
             server_file_root,
         })
-}
-
-pub fn api_routes_with_registry<T>(registry: Arc<LogRegistry>) -> Router<T> {
-    api_routes_with_registry_and_manager(registry, VisualRulesManager::in_memory())
 }
 
 pub fn api_routes<T>() -> Router<T> {
@@ -67,20 +58,17 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use axum::http::{Method, Request, StatusCode};
-    use logmancer_core::{NativeVisualRulesStore, VisualRulesEnvelope, VisualRulesManager};
+    use logmancer_core::{ConfigStore, VisualRulesEnvelope};
     use std::sync::Arc;
     use tower::ServiceExt;
 
     fn visual_rules_router() -> Router {
         let directory = tempfile::tempdir().unwrap().keep();
-        let manager = VisualRulesManager::with_store(Arc::new(NativeVisualRulesStore::new(
-            directory.join("visual-rules.json"),
-        )));
-        manager.load().unwrap();
-        api_routes_with_registry_and_manager(
-            Arc::new(LogRegistry::with_manager(manager.clone())),
-            manager,
-        )
+        let config_store = ConfigStore::new(directory);
+        config_store.prepare().unwrap();
+        let registry = Arc::new(LogRegistry::builder().config_store(config_store).build());
+        registry.reload_visual_rules().unwrap();
+        api_routes_with_registry(registry)
     }
 
     #[tokio::test]

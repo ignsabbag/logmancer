@@ -8,63 +8,60 @@ pub mod file_opening;
 mod visual_rules_state;
 
 #[cfg(feature = "ssr")]
-pub fn visual_rules_path_from_env() -> std::path::PathBuf {
-    visual_rules_path(
+pub fn config_directory_from_env() -> std::path::PathBuf {
+    config_directory(
         std::env::var_os("LOGMANCER_CONFIG_DIR").map(std::path::PathBuf::from),
         std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
     )
 }
 
 #[cfg(feature = "ssr")]
-fn visual_rules_path(
+fn config_directory(
     config_dir: Option<std::path::PathBuf>,
     working_dir: std::path::PathBuf,
 ) -> std::path::PathBuf {
-    let base = config_dir
+    config_dir
         .filter(|value| !value.as_os_str().is_empty())
-        .unwrap_or_else(|| working_dir.join("config"));
-    base.join("visual-rules.json")
+        .unwrap_or_else(|| working_dir.join("config"))
 }
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use super::{visual_rules_path, visual_rules_runtime, visual_rules_runtime_with_initial_file};
+    use super::{config_directory, registry_runtime, try_open_initial_file};
     use logmancer_core::{
         LineStyleIntent, ManagedVisualRule, VisualColor, VisualMatcher, VisualRulesEnvelope,
     };
     use std::path::PathBuf;
 
     #[test]
-    fn config_directory_takes_precedence_over_default_visual_rules_location() {
-        let path = visual_rules_path(
+    fn config_directory_takes_precedence_over_default_location() {
+        let path = config_directory(
             Some(PathBuf::from("/temporary/config")),
             PathBuf::from("/working-directory"),
         );
 
-        assert_eq!(path, PathBuf::from("/temporary/config/visual-rules.json"));
+        assert_eq!(path, PathBuf::from("/temporary/config"));
     }
 
     #[test]
     fn missing_config_directory_uses_the_working_directory_default() {
-        let path = visual_rules_path(None, PathBuf::from("/working-directory"));
+        let path = config_directory(None, PathBuf::from("/working-directory"));
 
-        assert_eq!(
-            path,
-            PathBuf::from("/working-directory/config/visual-rules.json")
-        );
+        assert_eq!(path, PathBuf::from("/working-directory/config"));
     }
 
     #[test]
     fn visual_rules_runtime_creates_parent_and_shares_persisted_rules_with_readers() {
         let directory = tempfile::tempdir().unwrap();
-        let store_path = directory.path().join("config/visual-rules.json");
+        let config_directory = directory.path().join("config");
+        let store_path = config_directory.join("visual-rules.json");
         let log_path = directory.path().join("application.log");
         std::fs::write(&log_path, "ERROR disk\n").unwrap();
 
-        let (registry, manager) = visual_rules_runtime(store_path.clone());
-        let revision = manager.state().revision;
-        manager
-            .save(
+        let registry = registry_runtime(config_directory, None);
+        let revision = registry.visual_rules_state().revision;
+        registry
+            .upsert_visual_rules(
                 revision,
                 VisualRulesEnvelope::new(vec![ManagedVisualRule {
                     name: None,
@@ -101,11 +98,13 @@ mod tests {
     #[test]
     fn visual_rules_runtime_survives_load_failure_without_claiming_save_success() {
         let directory = tempfile::tempdir().unwrap();
-        let (_, manager) = visual_rules_runtime(directory.path().to_path_buf());
+        let blocked_config_directory = directory.path().join("not-a-directory");
+        std::fs::write(&blocked_config_directory, "blocked").unwrap();
+        let registry = registry_runtime(blocked_config_directory, None);
 
-        assert!(manager
-            .save(
-                manager.state().revision,
+        assert!(registry
+            .upsert_visual_rules(
+                registry.visual_rules_state().revision,
                 VisualRulesEnvelope::new(Vec::new())
             )
             .is_err());
@@ -117,57 +116,35 @@ mod tests {
         let log_path = directory.path().join("initial.log");
         std::fs::write(&log_path, "INFO ready\n").unwrap();
 
-        let (registry, _, file_id) = visual_rules_runtime_with_initial_file(
-            directory.path().join("config/visual-rules.json"),
-            log_path.to_str(),
-        );
+        let registry = registry_runtime(directory.path().join("config"), None);
+        let file_id = try_open_initial_file(&registry, log_path.to_str());
 
         assert!(registry.get_reader(&file_id.unwrap()).is_some());
     }
 }
 
 #[cfg(feature = "ssr")]
-pub fn visual_rules_runtime(
-    path: std::path::PathBuf,
-) -> (
-    std::sync::Arc<logmancer_core::LogRegistry>,
-    std::sync::Arc<logmancer_core::VisualRulesManager>,
-) {
-    use logmancer_core::{LogRegistry, NativeVisualRulesStore, VisualRulesManager};
+pub fn registry_runtime(
+    config_directory: std::path::PathBuf,
+    file_open_policy: Option<std::sync::Arc<dyn logmancer_core::FileOpenPolicy>>,
+) -> std::sync::Arc<logmancer_core::LogRegistry> {
+    use logmancer_core::{ConfigStore, LogRegistry};
     use std::sync::Arc;
     use tracing::warn;
 
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        if let Err(error) = std::fs::create_dir_all(parent) {
-            warn!(path = %parent.display(), %error, "Could not create visual rules directory");
-        }
+    let config_store = ConfigStore::new(config_directory);
+    if let Err(error) = config_store.prepare() {
+        warn!(path = %config_store.directory().display(), %error, "Could not prepare configuration directory");
     }
-    let manager =
-        VisualRulesManager::with_store(Arc::new(NativeVisualRulesStore::new(path.clone())));
-    if let Err(error) = manager.load() {
-        warn!(path = %path.display(), %error, "Could not load optional visual rules configuration");
+    let mut builder = LogRegistry::builder().config_store(config_store);
+    if let Some(file_open_policy) = file_open_policy {
+        builder = builder.file_open_policy(file_open_policy);
     }
-    (
-        Arc::new(LogRegistry::with_manager(manager.clone())),
-        manager,
-    )
-}
-
-#[cfg(feature = "ssr")]
-fn visual_rules_runtime_with_initial_file(
-    path: std::path::PathBuf,
-    initial_path: Option<&str>,
-) -> (
-    std::sync::Arc<logmancer_core::LogRegistry>,
-    std::sync::Arc<logmancer_core::VisualRulesManager>,
-    Option<String>,
-) {
-    let (registry, manager) = visual_rules_runtime(path);
-    let file_id = try_open_initial_file(&registry, initial_path);
-    (registry, manager, file_id)
+    let registry = Arc::new(builder.build());
+    if let Err(error) = registry.reload_visual_rules() {
+        warn!(%error, "Could not load optional visual rules configuration");
+    }
+    registry
 }
 
 #[cfg(feature = "hydrate")]
@@ -180,32 +157,34 @@ pub fn hydrate() {
 
 #[cfg(feature = "ssr")]
 pub async fn start_leptos(port: u16) {
-    let (registry, manager) = visual_rules_runtime(visual_rules_path_from_env());
-    start_leptos_with_registry_and_manager(port, registry, manager).await;
+    use crate::api::server_browser::{ServerFileRoot, SsrFileOpenPolicy};
+    use logmancer_core::FileOpenPolicy;
+    use std::sync::Arc;
+
+    let file_open_policy = ServerFileRoot::from_env()
+        .map(|root| Arc::new(SsrFileOpenPolicy::new(root)) as Arc<dyn FileOpenPolicy>);
+    let registry = registry_runtime(config_directory_from_env(), file_open_policy);
+    let initial_path = std::env::args()
+        .nth(1)
+        .or_else(|| std::env::var("LOGMANCER_INITIAL_FILE").ok());
+    let _ = try_open_initial_file(&registry, initial_path.as_deref());
+    start_leptos_with_registry(port, registry).await;
 }
 
 #[cfg(feature = "ssr")]
 pub async fn start_leptos_with_registry(
     port: u16,
-    _registry: std::sync::Arc<logmancer_core::LogRegistry>,
+    registry: std::sync::Arc<logmancer_core::LogRegistry>,
 ) {
-    let initial_path = std::env::args()
-        .nth(1)
-        .or_else(|| std::env::var("LOGMANCER_INITIAL_FILE").ok());
-    let (registry, manager, _) = visual_rules_runtime_with_initial_file(
-        visual_rules_path_from_env(),
-        initial_path.as_deref(),
-    );
-    start_leptos_with_registry_and_manager(port, registry, manager).await;
+    start_leptos_with_registry_inner(port, registry).await;
 }
 
 #[cfg(feature = "ssr")]
-pub async fn start_leptos_with_registry_and_manager(
+async fn start_leptos_with_registry_inner(
     port: u16,
     registry: std::sync::Arc<logmancer_core::LogRegistry>,
-    visual_rules_manager: std::sync::Arc<logmancer_core::VisualRulesManager>,
 ) {
-    use crate::api::config::api_routes_with_registry_and_manager;
+    use crate::api::config::api_routes_with_registry;
     use crate::app::shell;
     use crate::components::App;
     use axum::Router;
@@ -228,10 +207,7 @@ pub async fn start_leptos_with_registry_and_manager(
     let routes = generate_route_list(App);
 
     let app = Router::new()
-        .nest(
-            "/api",
-            api_routes_with_registry_and_manager(registry.clone(), visual_rules_manager),
-        )
+        .nest("/api", api_routes_with_registry(registry.clone()))
         .leptos_routes(&leptos_options, routes, {
             let leptos_options = leptos_options.clone();
             move || shell(leptos_options.clone())
@@ -250,7 +226,7 @@ pub async fn start_leptos_with_registry_and_manager(
 
 #[cfg(feature = "ssr")]
 pub async fn start_axum(port: u16) {
-    use crate::api::config::api_routes_with_registry_and_manager;
+    use crate::api::config::api_routes_with_registry;
     use std::net::SocketAddr;
     use tracing::info;
 
@@ -263,8 +239,14 @@ pub async fn start_axum(port: u16) {
     info!("Starting API server on http://{}", &addr);
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, {
-        let (registry, manager) = visual_rules_runtime(visual_rules_path_from_env());
-        api_routes_with_registry_and_manager(registry, manager).into_make_service()
+        use crate::api::server_browser::{ServerFileRoot, SsrFileOpenPolicy};
+        use logmancer_core::FileOpenPolicy;
+        use std::sync::Arc;
+
+        let file_open_policy = ServerFileRoot::from_env()
+            .map(|root| Arc::new(SsrFileOpenPolicy::new(root)) as Arc<dyn FileOpenPolicy>);
+        let registry = registry_runtime(config_directory_from_env(), file_open_policy);
+        api_routes_with_registry(registry).into_make_service()
     })
     .await
     .unwrap();

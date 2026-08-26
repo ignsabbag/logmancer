@@ -7,6 +7,8 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+use logmancer_core::FileOpenPolicy;
+use std::io;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 use std::time::UNIX_EPOCH;
@@ -14,6 +16,12 @@ use std::time::UNIX_EPOCH;
 #[derive(Clone)]
 pub struct ServerFileRoot {
     pub canonical_path: PathBuf,
+}
+
+#[derive(Clone)]
+pub struct SsrFileOpenPolicy {
+    server_file_root: ServerFileRoot,
+    temporary_directory: Option<PathBuf>,
 }
 
 impl ServerFileRoot {
@@ -30,6 +38,38 @@ impl ServerFileRoot {
         }
 
         Some(Self { canonical_path })
+    }
+}
+
+impl SsrFileOpenPolicy {
+    pub fn new(server_file_root: ServerFileRoot) -> Self {
+        Self {
+            server_file_root,
+            temporary_directory: std::env::temp_dir().canonicalize().ok(),
+        }
+    }
+}
+
+impl FileOpenPolicy for SsrFileOpenPolicy {
+    fn validate(&self, path: &Path) -> io::Result<PathBuf> {
+        let canonical_path = path.canonicalize()?;
+        if canonical_path.starts_with(&self.server_file_root.canonical_path)
+            || self
+                .temporary_directory
+                .as_deref()
+                .is_some_and(|directory| canonical_path.parent() == Some(directory))
+                && canonical_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("logmancer-upload-"))
+        {
+            Ok(canonical_path)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "path is outside the configured server file root",
+            ))
+        }
     }
 }
 
@@ -303,6 +343,14 @@ mod tests {
         (dir, root)
     }
 
+    fn temporary_file_path(prefix: &str) -> PathBuf {
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{}-{timestamp}", std::process::id()))
+    }
+
     #[test]
     fn rejects_parent_traversal() {
         let (_dir, root) = mk_root();
@@ -343,6 +391,44 @@ mod tests {
         let result = resolve_root_bound_path(&root, &path.to_string_lossy());
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn file_open_policy_allows_server_files_and_managed_temporary_uploads() {
+        let (_dir, root) = mk_root();
+        let allowed = root.canonical_path.join("allowed.log");
+        std::fs::write(&allowed, "hello").unwrap();
+        let temporary_upload = temporary_file_path("logmancer-upload");
+        std::fs::write(&temporary_upload, "hello").unwrap();
+        let policy = SsrFileOpenPolicy::new(root);
+        let outside = tempfile::tempdir().unwrap();
+        let blocked = outside.path().join("blocked.log");
+        std::fs::write(&blocked, "hello").unwrap();
+
+        assert_eq!(policy.validate(&allowed).unwrap(), allowed);
+        assert_eq!(
+            policy.validate(&temporary_upload).unwrap(),
+            temporary_upload
+        );
+        assert_eq!(
+            policy.validate(&blocked).unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        std::fs::remove_file(temporary_upload).unwrap();
+    }
+
+    #[test]
+    fn file_open_policy_rejects_unmanaged_temporary_files() {
+        let (_dir, root) = mk_root();
+        let temporary_file = temporary_file_path("unmanaged");
+        std::fs::write(&temporary_file, "hello").unwrap();
+        let policy = SsrFileOpenPolicy::new(root);
+
+        assert_eq!(
+            policy.validate(&temporary_file).unwrap_err().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        std::fs::remove_file(temporary_file).unwrap();
     }
 
     #[test]

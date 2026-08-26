@@ -1,3 +1,5 @@
+#[cfg(feature = "native-persistence")]
+mod config_store;
 mod file_ops;
 mod handler;
 mod models;
@@ -10,6 +12,8 @@ mod visual_rules_manager;
 mod visual_rules_store;
 mod workers;
 
+#[cfg(feature = "native-persistence")]
+pub use config_store::ConfigStore;
 pub use models::file_info::FileInfo;
 pub use models::page_result::{PageLine, PageResult};
 pub use models::search::{PageSearchResult, SearchDisplayStatus, SearchMatch, SearchStatus};
@@ -18,7 +22,7 @@ pub use models::visual_rules::{
     ValidationSeverity, VisualColor, VisualMatcher, VisualRule, VisualRulesEnvelope,
 };
 pub use reader::LogReader;
-pub use registry::LogRegistry;
+pub use registry::{FileOpenPolicy, LogRegistry, LogRegistryBuilder};
 pub use visual_rules::VisualRuleEvaluator;
 pub use visual_rules_manager::{
     SaveOutcome, SaveResult, VisualRulesError, VisualRulesManager, VisualRulesState,
