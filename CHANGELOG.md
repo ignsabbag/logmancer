@@ -6,6 +6,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added
+
+- The standalone web server can be deliberately exposed on a configured interface and port through `LOGMANCER_BIND_ADDR`; desktop remains loopback-only.
+
 ## [0.4.0] - 2026-08-26
 
 ### Added

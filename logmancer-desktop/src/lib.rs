@@ -1,6 +1,8 @@
 #![recursion_limit = "256"]
 
 use logmancer_core::LogRegistry;
+#[cfg(any(feature = "embedded-server", test))]
+use std::net::SocketAddr;
 use std::net::{TcpStream, ToSocketAddrs};
 #[cfg(any(feature = "embedded-server", test))]
 use std::path::{Path, PathBuf};
@@ -58,6 +60,11 @@ where
     }
 
     false
+}
+
+#[cfg(any(feature = "embedded-server", test))]
+fn embedded_server_bind_addr() -> SocketAddr {
+    SocketAddr::from(([127, 0, 0, 1], 0))
 }
 
 #[cfg(not(feature = "embedded-server"))]
@@ -283,6 +290,11 @@ mod tests {
     }
 
     #[test]
+    fn embedded_server_bind_address_is_always_loopback() {
+        assert_eq!(embedded_server_bind_addr(), "127.0.0.1:0".parse().unwrap());
+    }
+
+    #[test]
     fn default_capability_keeps_native_open_inside_tauri_boundary() {
         let capability = include_str!("../capabilities/default.json");
 
@@ -363,15 +375,15 @@ pub fn run() {
         let registry = registry_runtime(config_directory, None);
         *state.registry.write().expect("desktop registry lock") = registry.clone();
         let initial_file_id = try_open_initial_file(&registry, initial_path.as_deref());
-        let port = std::net::TcpListener::bind("127.0.0.1:0")
+        let addr = std::net::TcpListener::bind(embedded_server_bind_addr())
             .expect("Could not open a socket")
             .local_addr()
-            .expect("The address could not be obtained")
-            .port();
+            .expect("The address could not be obtained");
+        let port = addr.port();
         info!("Spawning embedded SSR server on port={}", port);
         tauri::async_runtime::spawn(async move {
             info!("Embedded SSR server task started");
-            start_leptos_with_registry(port, registry).await
+            start_leptos_with_registry(addr, registry).await
         });
         wait_for_embedded_server(port);
         let window = app.get_webview_window("main").unwrap();
