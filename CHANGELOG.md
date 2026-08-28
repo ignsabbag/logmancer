@@ -6,6 +6,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-28
+
 ### Added
 
 - The standalone web server can be deliberately exposed on a configured interface and port through `LOGMANCER_BIND_ADDR`; desktop remains loopback-only.
@@ -103,7 +105,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Web follow mode works, but does not yet expose a clear visual indicator.
 - Search, visual rules, structured parsing, and multi-file workspace improvements are planned but not part of `0.1.0`.
 
-[Unreleased]: https://github.com/ignsabbag/logmancer/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/ignsabbag/logmancer/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/ignsabbag/logmancer/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ignsabbag/logmancer/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ignsabbag/logmancer/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ignsabbag/logmancer/compare/v0.1.0...v0.2.0
