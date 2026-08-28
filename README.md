@@ -103,6 +103,14 @@ Run the development web server with Leptos:
 cargo leptos watch --project logmancer-web
 ```
 
+The web server listens on `127.0.0.1:3000` by default. To intentionally expose it on another interface or port, set `LOGMANCER_BIND_ADDR` to a full socket address:
+
+```sh
+LOGMANCER_BIND_ADDR=0.0.0.0:8080 cargo leptos watch --project logmancer-web
+```
+
+This setting applies only to the standalone web server. Desktop always uses loopback; its embedded server selects a loopback port automatically and its development mode connects to `localhost:3000`. When exposing the web server, set `LOGMANCER_SERVER_FILE_ROOT` to limit the server-side files it can open.
+
 ### logmancer-desktop
 
 Launch the desktop app using Tauri:
@@ -125,7 +133,10 @@ cargo tauri dev
 
 ## Configuration
 
-No additional configuration is required at this time. Future modules may introduce config files or environment variables.
+No additional configuration is required. The web server supports these optional environment variables:
+
+* `LOGMANCER_BIND_ADDR`: Full bind address for the standalone web server, such as `0.0.0.0:8080`. Defaults to `127.0.0.1:3000`.
+* `LOGMANCER_SERVER_FILE_ROOT`: Directory containing files that the web server may open.
 
 ---
 

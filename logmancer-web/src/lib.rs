@@ -16,6 +16,30 @@ pub fn config_directory_from_env() -> std::path::PathBuf {
 }
 
 #[cfg(feature = "ssr")]
+pub fn web_bind_addr(default_port: u16) -> Result<std::net::SocketAddr, String> {
+    resolve_bind_addr(
+        std::env::var("LOGMANCER_BIND_ADDR").ok().as_deref(),
+        default_port,
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn resolve_bind_addr(
+    configured_addr: Option<&str>,
+    default_port: u16,
+) -> Result<std::net::SocketAddr, String> {
+    match configured_addr
+        .map(str::trim)
+        .filter(|addr| !addr.is_empty())
+    {
+        Some(addr) => addr.parse().map_err(|error| {
+            format!("LOGMANCER_BIND_ADDR must be a socket address such as 0.0.0.0:3000: {error}")
+        }),
+        None => Ok(std::net::SocketAddr::from(([127, 0, 0, 1], default_port))),
+    }
+}
+
+#[cfg(feature = "ssr")]
 fn config_directory(
     config_dir: Option<std::path::PathBuf>,
     working_dir: std::path::PathBuf,
@@ -27,7 +51,7 @@ fn config_directory(
 
 #[cfg(all(test, feature = "ssr"))]
 mod tests {
-    use super::{config_directory, registry_runtime, try_open_initial_file};
+    use super::{config_directory, registry_runtime, resolve_bind_addr, try_open_initial_file};
     use logmancer_core::{
         LineStyleIntent, ManagedVisualRule, VisualColor, VisualMatcher, VisualRulesEnvelope,
     };
@@ -48,6 +72,27 @@ mod tests {
         let path = config_directory(None, PathBuf::from("/working-directory"));
 
         assert_eq!(path, PathBuf::from("/working-directory/config"));
+    }
+
+    #[test]
+    fn missing_bind_address_uses_loopback_with_the_configured_port() {
+        let addr = resolve_bind_addr(None, 43123).unwrap();
+
+        assert_eq!(addr, "127.0.0.1:43123".parse().unwrap());
+    }
+
+    #[test]
+    fn configured_bind_address_overrides_interface_and_port() {
+        let addr = resolve_bind_addr(Some("0.0.0.0:8080"), 3000).unwrap();
+
+        assert_eq!(addr, "0.0.0.0:8080".parse().unwrap());
+    }
+
+    #[test]
+    fn invalid_bind_address_returns_configuration_error() {
+        let error = resolve_bind_addr(Some("not-an-address"), 3000).unwrap_err();
+
+        assert!(error.contains("LOGMANCER_BIND_ADDR"));
     }
 
     #[test]
@@ -156,7 +201,7 @@ pub fn hydrate() {
 }
 
 #[cfg(feature = "ssr")]
-pub async fn start_leptos(port: u16) {
+pub async fn start_leptos(addr: std::net::SocketAddr) {
     use crate::api::server_browser::{ServerFileRoot, SsrFileOpenPolicy};
     use logmancer_core::FileOpenPolicy;
     use std::sync::Arc;
@@ -168,20 +213,20 @@ pub async fn start_leptos(port: u16) {
         .nth(1)
         .or_else(|| std::env::var("LOGMANCER_INITIAL_FILE").ok());
     let _ = try_open_initial_file(&registry, initial_path.as_deref());
-    start_leptos_with_registry(port, registry).await;
+    start_leptos_with_registry(addr, registry).await;
 }
 
 #[cfg(feature = "ssr")]
 pub async fn start_leptos_with_registry(
-    port: u16,
+    addr: std::net::SocketAddr,
     registry: std::sync::Arc<logmancer_core::LogRegistry>,
 ) {
-    start_leptos_with_registry_inner(port, registry).await;
+    start_leptos_with_registry_inner(addr, registry).await;
 }
 
 #[cfg(feature = "ssr")]
 async fn start_leptos_with_registry_inner(
-    port: u16,
+    addr: std::net::SocketAddr,
     registry: std::sync::Arc<logmancer_core::LogRegistry>,
 ) {
     use crate::api::config::api_routes_with_registry;
@@ -190,13 +235,11 @@ async fn start_leptos_with_registry_inner(
     use axum::Router;
     use leptos::prelude::*;
     use leptos_axum::{generate_route_list, LeptosRoutes};
-    use std::net::SocketAddr;
     use tracing::info;
 
     init_backend_logging();
 
     let conf = get_configuration(None).unwrap();
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let leptos_options = conf.leptos_options;
     info!(
         "Resolved Leptos runtime config LEPTOS_SITE_ROOT={:?} LEPTOS_OUTPUT_NAME={:?}",
@@ -227,12 +270,11 @@ async fn start_leptos_with_registry_inner(
 #[cfg(feature = "ssr")]
 pub async fn start_axum(port: u16) {
     use crate::api::config::api_routes_with_registry;
-    use std::net::SocketAddr;
     use tracing::info;
 
     init_backend_logging();
-
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr = web_bind_addr(port)
+        .unwrap_or_else(|error| panic!("Invalid web server configuration: {error}"));
 
     // run our app with hyper
     // `axum::Server` is a re-export of `hyper::Server`
