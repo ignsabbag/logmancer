@@ -1,3 +1,5 @@
+#![cfg(feature = "native-persistence")]
+
 use logmancer_core::{ConfigStore, LogRegistry};
 
 fn registry(directory: &std::path::Path) -> LogRegistry {
