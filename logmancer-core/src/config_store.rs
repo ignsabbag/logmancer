@@ -1,9 +1,11 @@
+use crate::recent_files::RecentFilesManager;
 use crate::{NativeVisualRulesStore, VisualRulesStore};
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 const VISUAL_RULES_FILE: &str = "visual-rules.json";
+const RECENT_FILES_FILE: &str = "recent-files.json";
 
 #[derive(Clone)]
 pub struct ConfigStore {
@@ -23,6 +25,10 @@ impl ConfigStore {
         Arc::new(NativeVisualRulesStore::new(
             self.directory.join(VISUAL_RULES_FILE),
         ))
+    }
+
+    pub fn recent_files(&self) -> io::Result<RecentFilesManager> {
+        RecentFilesManager::load(self.directory.join(RECENT_FILES_FILE))
     }
 
     pub fn directory(&self) -> &Path {

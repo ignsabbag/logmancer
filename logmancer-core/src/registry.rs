@@ -1,3 +1,5 @@
+#[cfg(feature = "native-persistence")]
+use crate::recent_files::RecentFilesManager;
 use crate::{
     LogReader, SaveResult, VisualRulesEnvelope, VisualRulesError, VisualRulesManager,
     VisualRulesState,
@@ -17,6 +19,8 @@ pub struct LogRegistry {
     open_files: Arc<DashMap<Uuid, LogReader>>,
     visual_rules_manager: Arc<VisualRulesManager>,
     file_open_policy: Option<Arc<dyn FileOpenPolicy>>,
+    #[cfg(feature = "native-persistence")]
+    recent_files_manager: Option<Arc<RecentFilesManager>>,
 }
 
 pub struct LogRegistryBuilder {
@@ -41,15 +45,24 @@ impl LogRegistryBuilder {
         #[cfg(feature = "native-persistence")]
         let visual_rules_manager = self
             .config_store
+            .as_ref()
             .map(|config_store| VisualRulesManager::with_store(config_store.visual_rules()))
             .unwrap_or_else(VisualRulesManager::in_memory);
         #[cfg(not(feature = "native-persistence"))]
         let visual_rules_manager = VisualRulesManager::in_memory();
 
+        #[cfg(feature = "native-persistence")]
+        let recent_files_manager = self
+            .config_store
+            .as_ref()
+            .and_then(|store| store.recent_files().ok())
+            .map(Arc::new);
         LogRegistry {
             open_files: Arc::new(DashMap::new()),
             visual_rules_manager,
             file_open_policy: self.file_open_policy,
+            #[cfg(feature = "native-persistence")]
+            recent_files_manager,
         }
     }
 }
@@ -69,26 +82,67 @@ impl LogRegistry {
 
     /// Opens a new file and register with a UUID
     pub fn open_file(&self, path: &str) -> io::Result<String> {
+        let path = self.resolve_path(path)?;
+        #[cfg(feature = "native-persistence")]
+        if let Some(manager) = &self.recent_files_manager
+            && let Some(id) = manager.id_for_path(&path.to_string_lossy())
+        {
+            let uuid = Uuid::parse_str(&id).map_err(io::Error::other)?;
+            self.open_with_id(uuid, &path)?;
+            manager.record(id.clone(), path.to_string_lossy().into_owned())?;
+            return Ok(id);
+        }
         let uuid = Uuid::new_v4();
-        let path = match &self.file_open_policy {
-            Some(policy) => policy.validate(Path::new(path))?,
-            None => PathBuf::from(path),
-        };
-        let reader = LogReader::with_manager(
-            path.to_string_lossy().into_owned(),
-            self.visual_rules_manager.clone(),
-        );
-        self.open_files.insert(uuid, reader?);
+        self.open_with_id(uuid, &path)?;
+        #[cfg(feature = "native-persistence")]
+        if let Some(manager) = &self.recent_files_manager {
+            manager.record(uuid.to_string(), path.to_string_lossy().into_owned())?;
+        }
+        Ok(uuid.to_string())
+    }
+
+    pub fn open_ephemeral_file(&self, path: &str) -> io::Result<String> {
+        let uuid = Uuid::new_v4();
+        let path = self.resolve_path(path)?;
+        self.open_with_id(uuid, &path)?;
         Ok(uuid.to_string())
     }
 
     /// Gets a LogReader by UUID
     pub fn get_reader(&self, file_id: &str) -> Option<RefMut<'_, Uuid, LogReader>> {
-        if let Ok(uuid) = Uuid::parse_str(file_id) {
-            self.open_files.get_mut(&uuid)
-        } else {
-            None
+        let uuid = Uuid::parse_str(file_id).ok()?;
+        if self.open_files.contains_key(&uuid) {
+            return self.open_files.get_mut(&uuid);
         }
+        #[cfg(feature = "native-persistence")]
+        if let Some(manager) = &self.recent_files_manager {
+            let path = manager.path_for_id(file_id)?;
+            let path = self.resolve_path(&path).ok()?;
+            self.open_with_id(uuid, &path).ok()?;
+            manager
+                .record(file_id.to_string(), path.to_string_lossy().into_owned())
+                .ok()?;
+        }
+        self.open_files.get_mut(&uuid)
+    }
+
+    fn resolve_path(&self, path: &str) -> io::Result<PathBuf> {
+        match &self.file_open_policy {
+            Some(policy) => policy.validate(Path::new(path)),
+            None => Path::new(path).canonicalize(),
+        }
+    }
+
+    fn open_with_id(&self, uuid: Uuid, path: &Path) -> io::Result<()> {
+        if self.open_files.contains_key(&uuid) {
+            return Ok(());
+        }
+        let reader = LogReader::with_manager(
+            path.to_string_lossy().into_owned(),
+            self.visual_rules_manager.clone(),
+        )?;
+        self.open_files.insert(uuid, reader);
+        Ok(())
     }
 
     pub fn visual_rules_state(&self) -> VisualRulesState {

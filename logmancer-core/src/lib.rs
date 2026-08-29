@@ -1,9 +1,13 @@
 #[cfg(feature = "native-persistence")]
+mod config_lock;
+#[cfg(feature = "native-persistence")]
 mod config_store;
 mod file_ops;
 mod handler;
 mod models;
 mod reader;
+#[cfg(feature = "native-persistence")]
+mod recent_files;
 mod registry;
 mod timing;
 mod visual_rules;
@@ -22,6 +26,8 @@ pub use models::visual_rules::{
     ValidationSeverity, VisualColor, VisualMatcher, VisualRule, VisualRulesEnvelope,
 };
 pub use reader::LogReader;
+#[cfg(feature = "native-persistence")]
+pub use recent_files::{MAX_RECENT_FILES, RecentFile, RecentFilesEnvelope, RecentFilesManager};
 pub use registry::{FileOpenPolicy, LogRegistry, LogRegistryBuilder};
 pub use visual_rules::VisualRuleEvaluator;
 pub use visual_rules_manager::{

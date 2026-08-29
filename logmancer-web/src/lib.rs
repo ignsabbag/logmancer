@@ -209,10 +209,6 @@ pub async fn start_leptos(addr: std::net::SocketAddr) {
     let file_open_policy = ServerFileRoot::from_env()
         .map(|root| Arc::new(SsrFileOpenPolicy::new(root)) as Arc<dyn FileOpenPolicy>);
     let registry = registry_runtime(config_directory_from_env(), file_open_policy);
-    let initial_path = std::env::args()
-        .nth(1)
-        .or_else(|| std::env::var("LOGMANCER_INITIAL_FILE").ok());
-    let _ = try_open_initial_file(&registry, initial_path.as_deref());
     start_leptos_with_registry(addr, registry).await;
 }
 
