@@ -1,5 +1,5 @@
 #[cfg(target_arch = "wasm32")]
-use crate::browser_api_client::fetch_file_info;
+use crate::browser_api_client::{fetch_file_info, FileInfoError};
 use crate::components::context::{
     ActivePaneContext, LogContentFocusContext, LogFileContext, SearchCommandContext,
     SearchUiContext, SelectionContext, SelectionSource,
@@ -15,6 +15,8 @@ use leptos::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use leptos::wasm_bindgen::JsCast;
 use leptos::{component, view, IntoView};
+#[cfg(target_arch = "wasm32")]
+use leptos_router::hooks::use_navigate;
 use leptos_router::hooks::use_params_map;
 #[cfg(target_arch = "wasm32")]
 use leptos_use::use_event_listener;
@@ -74,6 +76,8 @@ fn next_refresh_generation(current: u64) -> u64 {
 #[component]
 pub fn LogView() -> impl IntoView {
     let file_id = Memo::new(move |_| use_params_map().get().get("id").unwrap_or_default());
+    #[cfg(target_arch = "wasm32")]
+    let navigate = use_navigate();
     let (follow, set_follow) = signal(false);
     let (tail, set_tail) = signal(false);
     let (selected_original_line, set_selected_original_line) = signal(None::<usize>);
@@ -107,8 +111,10 @@ pub fn LogView() -> impl IntoView {
         let current_file_id = file_id.get();
         set_file_path.set(current_file_id.clone());
         leptos::task::spawn_local(async move {
-            if let Ok(info) = fetch_file_info(current_file_id).await {
-                set_file_path.set(app_bar_path(Some(&info), ""));
+            match fetch_file_info(current_file_id).await {
+                Ok(info) => set_file_path.set(app_bar_path(Some(&info), "")),
+                Err(FileInfoError::NotFound) => navigate("/", Default::default()),
+                Err(FileInfoError::Message(_)) => {}
             }
         });
     });

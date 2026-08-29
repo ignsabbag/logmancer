@@ -348,9 +348,7 @@ fn wait_for_embedded_server(port: u16) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_desktop_logging();
-    let initial_path = std::env::args()
-        .nth(1)
-        .or_else(|| std::env::var("LOGMANCER_INITIAL_FILE").ok());
+    let initial_path = std::env::args().nth(1);
     info!(
         initial_file_provided = initial_path.is_some(),
         "Resolved desktop initial file argument"

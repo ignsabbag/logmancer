@@ -19,5 +19,8 @@ sha2 = { version = "0.10.9", optional = true }
 wasm = ["uuid/js"]
 native-persistence = ["dep:atomic-write-file", "dep:serde_json", "dep:sha2", "dep:windows-sys"]
 
+[dev-dependencies]
+tempfile = "3"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"], optional = true }

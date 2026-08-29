@@ -119,7 +119,7 @@ pub async fn upload_file(
     let path_string = path.to_string_lossy().to_string();
     info!("Opening uploaded temp file path={}", path_string);
 
-    match app_state.registry.clone().open_file(&path_string) {
+    match app_state.registry.clone().open_ephemeral_file(&path_string) {
         Ok(file_id) => (
             StatusCode::CREATED,
             Json(OpenServerFileResponse { file_id }),
