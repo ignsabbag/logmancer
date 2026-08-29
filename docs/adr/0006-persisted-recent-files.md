@@ -36,6 +36,7 @@ registry owns the authorization check before recreating a reader.
 | Capacity | History retains at most 10 entries, ordered by most recent opening. |
 | Deduplication | The canonical full path is the identity. Reopening it reuses its UUID and moves it to the front. Basenames are never matched. |
 | Cache and durability | History loads once at registry construction and is kept in memory. Each mutation is merged and atomically persisted under a file lock. |
+| Corrupt history | Invalid JSON is copied to a timestamped `.corrupt.json` backup, replaced with an empty valid history, and reported through the application log. |
 | Normal opening | Persistent opening validates and canonicalizes the path, reuses an existing history UUID when present, otherwise creates a new UUID and records it after the reader opens. |
 | Restoration | `get_reader(id)` first checks open readers. If absent, it resolves the ID in history and recreates the reader with that same UUID. |
 | Authorization | Every recreated reader passes through `FileOpenPolicy`; SSR restoration therefore cannot bypass the active `LOGMANCER_SERVER_FILE_ROOT`. |

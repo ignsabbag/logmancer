@@ -43,7 +43,7 @@ pub async fn fetch_page(
 #[cfg(target_arch = "wasm32")]
 pub enum FileInfoError {
     NotFound,
-    Message(String),
+    RequestFailed,
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -51,25 +51,24 @@ pub async fn fetch_file_info(file_id: String) -> Result<FileInfo, FileInfoError>
     let base = window()
         .location()
         .origin()
-        .map_err(|_| FileInfoError::Message("Could not detect application origin.".to_string()))?;
+        .map_err(|_| FileInfoError::RequestFailed)?;
     let response = reqwest::Client::new()
         .get(format!("{base}/api/file_info"))
         .query(&crate::api::commons::FileInfoRequest { file_id })
         .send()
         .await
-        .map_err(|_| FileInfoError::Message("Could not connect to the server.".to_string()))?;
+        .map_err(|_| FileInfoError::RequestFailed)?;
 
     if response.status().is_success() {
         response
             .json::<FileInfo>()
             .await
-            .map_err(|_| FileInfoError::Message("Could not parse file information.".to_string()))
+            .map_err(|_| FileInfoError::RequestFailed)
     } else if response.status() == reqwest::StatusCode::NOT_FOUND {
         Err(FileInfoError::NotFound)
     } else {
-        Err(FileInfoError::Message(
-            parse_api_error_message(response, "Could not load file information.").await,
-        ))
+        let _ = parse_api_error_message(response, "Could not load file information.").await;
+        Err(FileInfoError::RequestFailed)
     }
 }
 

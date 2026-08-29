@@ -1,8 +1,10 @@
+use crate::config_lock::with_config_file_lock;
 use atomic_write_file::AtomicWriteFile;
+use log::warn;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -39,11 +41,7 @@ pub struct RecentFilesManager {
 
 impl RecentFilesManager {
     pub fn load(path: PathBuf) -> io::Result<Self> {
-        let state = match fs::read(&path) {
-            Ok(bytes) => serde_json::from_slice(&bytes).map_err(io::Error::other)?,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => RecentFilesEnvelope::default(),
-            Err(error) => return Err(error),
-        };
+        let state = read_envelope(&path)?;
         Ok(Self {
             path,
             state: Mutex::new(state),
@@ -75,22 +73,65 @@ impl RecentFilesManager {
             .state
             .lock()
             .map_err(|_| io::Error::other("recent file state poisoned"))?;
-        state.entries.retain(|entry| entry.path != path);
-        state.entries.insert(
-            0,
-            RecentFile {
-                id,
-                path,
-                opened_at: SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map_err(io::Error::other)?
-                    .as_millis(),
-            },
-        );
-        state.entries.truncate(MAX_RECENT_FILES);
-        let bytes = serde_json::to_vec_pretty(&*state).map_err(io::Error::other)?;
-        let mut file = AtomicWriteFile::options().open(&self.path)?;
-        file.write_all(&bytes)?;
-        file.commit()
+        with_config_file_lock(&self.path, || {
+            let mut merged = read_envelope(&self.path)?;
+            apply_record(&mut merged, id, path)?;
+            write_envelope(&self.path, &merged)?;
+            *state = merged;
+            Ok(())
+        })
     }
+}
+
+fn read_envelope(path: &Path) -> io::Result<RecentFilesEnvelope> {
+    match fs::read(path) {
+        Ok(bytes) => match serde_json::from_slice(&bytes) {
+            Ok(envelope) => Ok(envelope),
+            Err(error) => recover_corrupt_file(path, error),
+        },
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(RecentFilesEnvelope::default()),
+        Err(error) => Err(error),
+    }
+}
+
+fn recover_corrupt_file(path: &Path, error: serde_json::Error) -> io::Result<RecentFilesEnvelope> {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(io::Error::other)?
+        .as_millis();
+    let backup = path.with_file_name(format!("recent-files.{timestamp}.corrupt.json"));
+    fs::copy(path, &backup)?;
+    let envelope = RecentFilesEnvelope::default();
+    write_envelope(path, &envelope)?;
+    warn!(
+        "Recovered corrupt recent-files history at {} into {}: {}",
+        path.display(),
+        backup.display(),
+        error
+    );
+    Ok(envelope)
+}
+
+fn apply_record(envelope: &mut RecentFilesEnvelope, id: String, path: String) -> io::Result<()> {
+    envelope.entries.retain(|entry| entry.path != path);
+    envelope.entries.insert(
+        0,
+        RecentFile {
+            id,
+            path,
+            opened_at: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(io::Error::other)?
+                .as_millis(),
+        },
+    );
+    envelope.entries.truncate(MAX_RECENT_FILES);
+    Ok(())
+}
+
+fn write_envelope(path: &Path, envelope: &RecentFilesEnvelope) -> io::Result<()> {
+    let bytes = serde_json::to_vec_pretty(envelope).map_err(io::Error::other)?;
+    let mut file = AtomicWriteFile::options().open(path)?;
+    file.write_all(&bytes)?;
+    file.commit()
 }

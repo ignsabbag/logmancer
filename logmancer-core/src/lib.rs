@@ -1,4 +1,6 @@
 #[cfg(feature = "native-persistence")]
+mod config_lock;
+#[cfg(feature = "native-persistence")]
 mod config_store;
 mod file_ops;
 mod handler;

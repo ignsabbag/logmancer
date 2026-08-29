@@ -1,17 +1,17 @@
 #![cfg(feature = "native-persistence")]
 
+use crate::config_lock::with_config_file_lock;
 use crate::models::visual_rules::VisualRulesEnvelope;
 use atomic_write_file::AtomicWriteFile;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 static TEMPORARY_SEQUENCE: AtomicU64 = AtomicU64::new(0);
-static COMMIT_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 const OVERSIZED_TOKEN_DOMAIN: &[u8] = b"logmancer:visual-rules:oversized:sha256:v1\0";
 const MAX_RETAINED_BACKUPS: usize = 10;
 
@@ -113,20 +113,7 @@ impl VisualRulesStore for NativeVisualRulesStore {
         bytes: &[u8],
         replace: bool,
     ) -> io::Result<StoreCommit> {
-        let _commit = COMMIT_LOCK
-            .get_or_init(|| Mutex::new(()))
-            .lock()
-            .map_err(|_| io::Error::other("visual rules commit lock poisoned"))?;
-        let mut lock_path = self.path.as_os_str().to_os_string();
-        lock_path.push(".lock");
-        let lock_file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(PathBuf::from(lock_path))?;
-        lock_file.lock()?;
-        let result = (|| {
+        with_config_file_lock(&self.path, || {
             if self.read()?.as_deref() != expected {
                 return Err(io::Error::new(
                     io::ErrorKind::AlreadyExists,
@@ -138,11 +125,7 @@ impl VisualRulesStore for NativeVisualRulesStore {
             } else {
                 self.save_new(bytes)
             }
-        })();
-        match (result, lock_file.unlock()) {
-            (Ok(commit), Ok(())) => Ok(commit),
-            (Err(error), _) | (_, Err(error)) => Err(error),
-        }
+        })
     }
 }
 

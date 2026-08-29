@@ -109,12 +109,13 @@ pub fn LogView() -> impl IntoView {
     #[cfg(target_arch = "wasm32")]
     Effect::new(move |_| {
         let current_file_id = file_id.get();
+        let navigate = navigate.clone();
         set_file_path.set(current_file_id.clone());
         leptos::task::spawn_local(async move {
             match fetch_file_info(current_file_id).await {
                 Ok(info) => set_file_path.set(app_bar_path(Some(&info), "")),
                 Err(FileInfoError::NotFound) => navigate("/", Default::default()),
-                Err(FileInfoError::Message(_)) => {}
+                Err(FileInfoError::RequestFailed) => {}
             }
         });
     });
