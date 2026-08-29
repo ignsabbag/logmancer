@@ -44,6 +44,15 @@ cargo tauri dev                              # Dev mode
 # All tests in workspace
 cargo test
 
+# Fast local feedback without the heavyweight Tauri desktop crate
+cargo test --workspace --exclude logmancer-desktop
+
+# SSR web tests when changing Leptos server-side behavior
+cargo test -p logmancer-web --features ssr --lib
+
+# Full desktop validation, including the embedded server
+cargo test -p logmancer-desktop
+
 # Single test by name
 cargo test test_read_line
 
@@ -52,6 +61,9 @@ cargo test -p logmancer-core
 
 # With output
 cargo test -- --nocapture
+
+# Reclaim debug and test artifacts without removing release builds
+cargo clean --profile dev
 ```
 
 ---
