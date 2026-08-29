@@ -22,6 +22,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- Local development and test builds retain less debug information, and contributor guidance now separates fast workspace, SSR, and full desktop test commands.
 - Visual-rules configuration retains only the 10 most recent backups after updates.
 - Visual-rules saving now creates or updates automatically, with clear conflict recovery controls.
 - Visual-rules drawer controls are more compact, with clearer rule editing and action hierarchy.

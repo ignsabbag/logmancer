@@ -7,6 +7,13 @@ members = [
     "logmancer-desktop"
 ]
 
+# Keep local builds and tests debuggable without retaining full dependency symbols.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 # Size-optimized profile for the Leptos WASM bundle.
 [profile.wasm-release]
 inherits = "release"

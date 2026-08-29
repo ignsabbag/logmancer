@@ -159,6 +159,22 @@ Contributions are welcome! To get started:
 
 Please adhere to the existing code style and include tests where applicable.
 
+For local development, run the focused test command that matches the area being changed:
+
+```sh
+# Fast workspace feedback without the heavyweight Tauri desktop crate
+cargo test --workspace --exclude logmancer-desktop
+
+# Leptos server-side rendering changes
+cargo test -p logmancer-web --features ssr --lib
+
+# Full desktop validation, including the embedded server
+cargo test -p logmancer-desktop
+
+# Reclaim debug and test artifacts while preserving release builds
+cargo clean --profile dev
+```
+
 ---
 
 ## License
