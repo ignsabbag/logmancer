@@ -19,7 +19,7 @@ fn reopening_a_file_reuses_its_persisted_id_after_restart() {
     drop(first);
 
     let restarted = registry(&directory.path().join("config"));
-    assert!(restarted.get_reader(&id).is_some());
+    assert!(restarted.with_reader(&id, |_| ()).is_some());
 }
 
 #[test]
@@ -33,7 +33,7 @@ fn ephemeral_opening_is_not_restored_after_restart() {
     drop(first);
 
     let restarted = registry(&directory.path().join("config"));
-    assert!(restarted.get_reader(&id).is_none());
+    assert!(restarted.with_reader(&id, |_| ()).is_none());
 }
 
 #[test]
@@ -49,8 +49,8 @@ fn persistent_history_keeps_only_the_ten_most_recent_files() {
     drop(open_registry);
 
     let restarted = registry(&directory.path().join("config"));
-    assert!(restarted.get_reader(&ids[0]).is_none());
-    assert!(restarted.get_reader(&ids[10]).is_some());
+    assert!(restarted.with_reader(&ids[0], |_| ()).is_none());
+    assert!(restarted.with_reader(&ids[10], |_| ()).is_some());
 }
 
 #[test]
@@ -73,8 +73,8 @@ fn concurrent_registries_merge_recent_file_updates() {
     drop((first_registry, second_registry));
 
     let restarted = registry(&config);
-    assert!(restarted.get_reader(&first_id).is_some());
-    assert!(restarted.get_reader(&second_id).is_some());
+    assert!(restarted.with_reader(&first_id, |_| ()).is_some());
+    assert!(restarted.with_reader(&second_id, |_| ()).is_some());
 }
 
 #[test]

@@ -149,9 +149,8 @@ fn temp_log_path(name: &str) -> std::path::PathBuf {
 fn wait_for_indexed_lines(registry: &LogRegistry, file_id: &str, expected: usize) {
     for _ in 0..20 {
         if registry
-            .get_reader(file_id)
+            .with_reader(file_id, |reader| reader.file_info())
             .expect("reader")
-            .file_info()
             .expect("file info")
             .total_lines
             >= expected
@@ -183,9 +182,8 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
     wait_for_indexed_lines(&registry, &first_id, 3);
 
     let first_page = registry
-        .get_reader(&first_id)
+        .with_reader(&first_id, |reader| reader.read_page(0, 3))
         .expect("first reader")
-        .read_page(0, 3)
         .expect("read page");
     assert_eq!(
         first_page
@@ -208,9 +206,8 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
         .expect("open second");
     wait_for_indexed_lines(&registry, &second_id, 3);
     let second_page = registry
-        .get_reader(&second_id)
+        .with_reader(&second_id, |reader| reader.read_page(0, 3))
         .expect("second reader")
-        .read_page(0, 3)
         .expect("read future reader");
     assert_eq!(second_page.lines[1].style, None);
     assert_eq!(
@@ -218,9 +215,16 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
         Some(style(Some("red"), Some("default")))
     );
 
-    let mut reader = registry.get_reader(&first_id).expect("first reader");
-    reader.filter("ERROR|WARN".to_string());
-    let filtered = reader.read_filter(0, 3).expect("filtered read");
+    let (filtered, searched, status) = registry
+        .with_reader(&first_id, |reader| {
+            reader.filter("ERROR|WARN".to_string());
+            let filtered = reader.read_filter(0, 3);
+            let searched = reader.apply_search("WARN".to_string(), 3);
+            let status = reader.search_status();
+            (filtered, searched, status)
+        })
+        .expect("first reader");
+    let filtered = filtered.expect("filtered read");
     assert_eq!(
         filtered
             .lines
@@ -229,7 +233,7 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
             .collect::<Vec<_>>(),
         vec![2, 3]
     );
-    let searched = reader.apply_search("WARN".to_string(), 3).expect("search");
+    let searched = searched.expect("search");
     assert_eq!(
         searched
             .lines
@@ -238,7 +242,7 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
             .collect::<Vec<_>>(),
         vec![2, 3, 4]
     );
-    assert_eq!(reader.search_status().query.as_deref(), Some("WARN"));
+    assert_eq!(status.query.as_deref(), Some("WARN"));
 
     std::fs::remove_file(path).expect("remove log");
 }

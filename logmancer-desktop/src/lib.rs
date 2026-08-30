@@ -223,16 +223,23 @@ mod tests {
         let file_id = open_selected_log_file(&registry, Some(path), "test")
             .unwrap()
             .unwrap();
-        let reader = registry.get_reader(&file_id).unwrap();
-
         for _ in 0..10 {
-            if reader.file_info().unwrap().total_lines >= 2 {
+            if registry
+                .with_reader(&file_id, |reader| reader.file_info())
+                .unwrap()
+                .unwrap()
+                .total_lines
+                >= 2
+            {
                 break;
             }
             sleep(Duration::from_millis(50));
         }
 
-        let info = reader.file_info().unwrap();
+        let info = registry
+            .with_reader(&file_id, |reader| reader.file_info())
+            .unwrap()
+            .unwrap();
 
         assert_eq!(info.total_lines, 2);
     }
@@ -260,7 +267,7 @@ mod tests {
 
         let file_id = open_dropped_log_path(&registry, path).unwrap();
 
-        assert!(registry.get_reader(&file_id).is_some());
+        assert!(registry.with_reader(&file_id, |_| ()).is_some());
     }
 
     #[test]
@@ -275,7 +282,10 @@ mod tests {
         let file_id = open_first_dropped_log_path(&registry, vec![first_path, second_path])
             .unwrap()
             .unwrap();
-        let info = registry.get_reader(&file_id).unwrap().file_info().unwrap();
+        let info = registry
+            .with_reader(&file_id, |reader| reader.file_info())
+            .unwrap()
+            .unwrap();
 
         assert!(info.path.ends_with("first.log"));
     }

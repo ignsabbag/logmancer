@@ -5,18 +5,74 @@ use crate::{
     VisualRulesState,
 };
 use dashmap::DashMap;
-use dashmap::mapref::one::RefMut;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use uuid::Uuid;
 
 pub trait FileOpenPolicy: Send + Sync {
     fn validate(&self, path: &Path) -> io::Result<PathBuf>;
 }
 
+struct ReaderEntry {
+    reader: Mutex<LogReader>,
+    state: Arc<Mutex<ReaderState>>,
+}
+
+struct ReaderState {
+    active_leases: usize,
+    closing: bool,
+    last_access: Instant,
+}
+
+struct ReaderLease {
+    state: Arc<Mutex<ReaderState>>,
+}
+
+impl ReaderEntry {
+    fn new(reader: LogReader) -> Self {
+        Self {
+            reader: Mutex::new(reader),
+            state: Arc::new(Mutex::new(ReaderState {
+                active_leases: 0,
+                closing: false,
+                last_access: Instant::now(),
+            })),
+        }
+    }
+
+    fn acquire(&self) -> Option<ReaderLease> {
+        let mut state = self.state.lock().unwrap();
+        if state.closing {
+            return None;
+        }
+        state.active_leases += 1;
+        state.last_access = Instant::now();
+        Some(ReaderLease {
+            state: self.state.clone(),
+        })
+    }
+
+    #[cfg(test)]
+    fn mark_closing(&self) {
+        self.state.lock().unwrap().closing = true;
+    }
+
+    #[cfg(test)]
+    fn active_leases(&self) -> usize {
+        self.state.lock().unwrap().active_leases
+    }
+}
+
+impl Drop for ReaderLease {
+    fn drop(&mut self) {
+        self.state.lock().unwrap().active_leases -= 1;
+    }
+}
+
 pub struct LogRegistry {
-    open_files: Arc<DashMap<Uuid, LogReader>>,
+    open_files: Arc<DashMap<Uuid, Arc<ReaderEntry>>>,
     visual_rules_manager: Arc<VisualRulesManager>,
     file_open_policy: Option<Arc<dyn FileOpenPolicy>>,
     #[cfg(feature = "native-persistence")]
@@ -108,11 +164,20 @@ impl LogRegistry {
         Ok(uuid.to_string())
     }
 
-    /// Gets a LogReader by UUID
-    pub fn get_reader(&self, file_id: &str) -> Option<RefMut<'_, Uuid, LogReader>> {
+    pub fn with_reader<T>(
+        &self,
+        file_id: &str,
+        operation: impl FnOnce(&mut LogReader) -> T,
+    ) -> Option<T> {
+        let entry = self.reader_entry(file_id)?;
+        let _lease = entry.acquire()?;
+        Some(operation(&mut entry.reader.lock().unwrap()))
+    }
+
+    fn reader_entry(&self, file_id: &str) -> Option<Arc<ReaderEntry>> {
         let uuid = Uuid::parse_str(file_id).ok()?;
-        if self.open_files.contains_key(&uuid) {
-            return self.open_files.get_mut(&uuid);
+        if let Some(entry) = self.open_files.get(&uuid) {
+            return Some(entry.clone());
         }
         #[cfg(feature = "native-persistence")]
         if let Some(manager) = &self.recent_files_manager {
@@ -123,7 +188,20 @@ impl LogRegistry {
                 .record(file_id.to_string(), path.to_string_lossy().into_owned())
                 .ok()?;
         }
-        self.open_files.get_mut(&uuid)
+        self.open_files.get(&uuid).map(|entry| entry.clone())
+    }
+
+    #[cfg(test)]
+    fn mark_closing(&self, file_id: &str) -> Option<()> {
+        let uuid = Uuid::parse_str(file_id).ok()?;
+        self.open_files.get(&uuid)?.mark_closing();
+        Some(())
+    }
+
+    #[cfg(test)]
+    fn active_leases(&self, file_id: &str) -> Option<usize> {
+        let uuid = Uuid::parse_str(file_id).ok()?;
+        Some(self.open_files.get(&uuid)?.active_leases())
     }
 
     fn resolve_path(&self, path: &str) -> io::Result<PathBuf> {
@@ -141,7 +219,8 @@ impl LogRegistry {
             path.to_string_lossy().into_owned(),
             self.visual_rules_manager.clone(),
         )?;
-        self.open_files.insert(uuid, reader);
+        self.open_files
+            .insert(uuid, Arc::new(ReaderEntry::new(reader)));
         Ok(())
     }
 
@@ -213,7 +292,10 @@ mod tests {
             .build();
 
         let file_id = registry.open_file("untrusted.log").unwrap();
-        let file_info = registry.get_reader(&file_id).unwrap().file_info().unwrap();
+        let file_info = registry
+            .with_reader(&file_id, |reader| reader.file_info())
+            .unwrap()
+            .unwrap();
 
         assert_eq!(file_info.path, allowed_path.to_string_lossy());
         drop(registry);
@@ -229,6 +311,50 @@ mod tests {
         let error = registry.open_file("blocked.log").unwrap_err();
 
         assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    }
+
+    #[test]
+    fn leased_access_releases_the_lease_after_an_operation_error() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("application.log");
+        std::fs::write(&path, "ready\n").unwrap();
+        let registry = LogRegistry::new();
+        let file_id = registry.open_file(path.to_str().unwrap()).unwrap();
+
+        let result = registry.with_reader(&file_id, |_| {
+            Err::<(), _>(io::Error::other("operation failed"))
+        });
+
+        assert!(result.expect("reader is available").is_err());
+        assert_eq!(registry.active_leases(&file_id), Some(0));
+    }
+
+    #[test]
+    fn closing_reader_rejects_new_access_while_an_operation_is_active() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("application.log");
+        std::fs::write(&path, "ready\n").unwrap();
+        let registry = Arc::new(LogRegistry::new());
+        let file_id = registry.open_file(path.to_str().unwrap()).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let active_registry = registry.clone();
+        let active_file_id = file_id.clone();
+
+        let active_operation = std::thread::spawn(move || {
+            active_registry.with_reader(&active_file_id, |_| {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            })
+        });
+        started_rx.recv().unwrap();
+
+        registry.mark_closing(&file_id).unwrap();
+
+        assert!(registry.with_reader(&file_id, |_| ()).is_none());
+        release_tx.send(()).unwrap();
+        active_operation.join().unwrap();
+        assert_eq!(registry.active_leases(&file_id), Some(0));
     }
 
     #[cfg(feature = "native-persistence")]
