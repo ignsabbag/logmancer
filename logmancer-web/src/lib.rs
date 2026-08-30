@@ -125,9 +125,8 @@ mod tests {
         let mut highlighted = false;
         for _ in 0..100 {
             let page = registry
-                .get_reader(&file_id)
+                .with_reader(&file_id, |reader| reader.read_page(0, 1))
                 .unwrap()
-                .read_page(0, 1)
                 .unwrap();
             highlighted = page.lines.first().is_some_and(|line| line.style.is_some());
             if highlighted {
@@ -164,7 +163,7 @@ mod tests {
         let registry = registry_runtime(directory.path().join("config"), None);
         let file_id = try_open_initial_file(&registry, log_path.to_str());
 
-        assert!(registry.get_reader(&file_id.unwrap()).is_some());
+        assert!(registry.with_reader(&file_id.unwrap(), |_| ()).is_some());
     }
 }
 

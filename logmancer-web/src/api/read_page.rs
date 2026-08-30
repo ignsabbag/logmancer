@@ -12,8 +12,10 @@ pub async fn read_page(
 ) -> impl IntoResponse {
     debug!("payload.path: {:?}", query);
 
-    match app_state.registry.get_reader(&query.file_id) {
-        Some(mut reader) => match reader.read_page(query.start_line, query.max_lines) {
+    match app_state.registry.with_reader(&query.file_id, |reader| {
+        reader.read_page(query.start_line, query.max_lines)
+    }) {
+        Some(result) => match result {
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -31,8 +33,10 @@ pub async fn tail(
 ) -> impl IntoResponse {
     debug!("payload.path: {:?}", query);
 
-    match app_state.registry.get_reader(&query.file_id) {
-        Some(mut reader) => match reader.tail(query.max_lines, query.follow) {
+    match app_state.registry.with_reader(&query.file_id, |reader| {
+        reader.tail(query.max_lines, query.follow)
+    }) {
+        Some(result) => match result {
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

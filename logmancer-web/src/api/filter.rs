@@ -15,11 +15,11 @@ pub async fn apply_filter(
         payload.file_id, payload.filter
     );
 
-    match app_state.registry.get_reader(&payload.file_id) {
-        Some(mut reader) => {
-            reader.filter(payload.filter);
-            (StatusCode::OK, Json("Filter applied")).into_response()
-        }
+    match app_state
+        .registry
+        .with_reader(&payload.file_id, |reader| reader.filter(payload.filter))
+    {
+        Some(()) => (StatusCode::OK, Json("Filter applied")).into_response(),
         None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
     }
 }
@@ -30,8 +30,10 @@ pub async fn read_filter_page(
 ) -> impl IntoResponse {
     debug!("read_filter_page: {:?}", query);
 
-    match app_state.registry.get_reader(&query.file_id) {
-        Some(mut reader) => match reader.read_filter(query.start_line, query.max_lines) {
+    match app_state.registry.with_reader(&query.file_id, |reader| {
+        reader.read_filter(query.start_line, query.max_lines)
+    }) {
+        Some(result) => match result {
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

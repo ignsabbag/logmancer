@@ -11,8 +11,11 @@ pub async fn file_info(
     query: Query<FileInfoRequest>,
 ) -> impl IntoResponse {
     debug!("Getting info about: {:?}", query);
-    match app_state.registry.get_reader(&query.file_id) {
-        Some(reader) => match reader.file_info() {
+    match app_state
+        .registry
+        .with_reader(&query.file_id, |reader| reader.file_info())
+    {
+        Some(result) => match result {
             Ok(file_info) => (StatusCode::OK, Json(file_info)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
