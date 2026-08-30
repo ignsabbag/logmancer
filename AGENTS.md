@@ -122,6 +122,12 @@ cargo clean --profile dev
 - Keep changelog entries concise and grouped under `[Unreleased]` during development or the active release section when preparing a tag.
 - If a change is purely internal and not release-note-worthy, leave `CHANGELOG.md` unchanged and call that out in the commit/PR summary.
 
+### Architecture Decisions
+- Accepted architectural decisions are documented in `docs/adr/`.
+- Before changing cross-cutting behavior, identify and read the relevant ADRs. This includes registry lifecycle, file opening and authorization, persistence, concurrency and workers, server resource policies, and platform-wide behavior.
+- Do not read every ADR by default. List or search `docs/adr/` by topic, then read only the relevant decision records.
+- Do not rewrite an accepted ADR to change its historical decision. Create a new ADR that references or supersedes it when making a new architectural decision.
+
 ---
 
 ## Dependencies
