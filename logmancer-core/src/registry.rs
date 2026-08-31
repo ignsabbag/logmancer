@@ -30,6 +30,18 @@ struct ReaderLease {
     state: Arc<(Mutex<ReaderState>, Condvar)>,
 }
 
+struct RegistryLifecycle {
+    state: Mutex<RegistryLifecycleState>,
+    changed: Condvar,
+}
+
+struct RegistryLifecycleState {
+    #[cfg(test)]
+    opening_waiters: usize,
+    #[cfg(test)]
+    open_candidate_barrier: Option<Arc<std::sync::Barrier>>,
+}
+
 impl ReaderEntry {
     fn new(reader: LogReader) -> Self {
         Self {
@@ -57,11 +69,20 @@ impl ReaderEntry {
         })
     }
 
-    fn close_and_take(&self) -> Option<LogReader> {
+    fn begin_closing(&self) {
         let (state_lock, leases_drained) = &*self.state;
         let mut state = state_lock.lock().unwrap();
         state.closing = true;
         leases_drained.notify_all();
+    }
+
+    fn is_closing(&self) -> bool {
+        self.state.0.lock().unwrap().closing
+    }
+
+    fn wait_for_leases_and_take(&self) -> Option<LogReader> {
+        let (state_lock, leases_drained) = &*self.state;
+        let mut state = state_lock.lock().unwrap();
         while state.active_leases > 0 {
             state = leases_drained.wait(state).unwrap();
         }
@@ -71,11 +92,6 @@ impl ReaderEntry {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .take()
-    }
-
-    #[cfg(test)]
-    fn mark_closing(&self) {
-        self.state.0.lock().unwrap().closing = true;
     }
 
     #[cfg(test)]
@@ -118,6 +134,7 @@ impl Drop for ReaderLease {
 
 pub struct LogRegistry {
     open_files: Arc<DashMap<Uuid, Arc<ReaderEntry>>>,
+    lifecycle: Arc<RegistryLifecycle>,
     visual_rules_manager: Arc<VisualRulesManager>,
     file_open_policy: Option<Arc<dyn FileOpenPolicy>>,
     #[cfg(feature = "native-persistence")]
@@ -160,6 +177,15 @@ impl LogRegistryBuilder {
             .map(Arc::new);
         LogRegistry {
             open_files: Arc::new(DashMap::new()),
+            lifecycle: Arc::new(RegistryLifecycle {
+                state: Mutex::new(RegistryLifecycleState {
+                    #[cfg(test)]
+                    opening_waiters: 0,
+                    #[cfg(test)]
+                    open_candidate_barrier: None,
+                }),
+                changed: Condvar::new(),
+            }),
             visual_rules_manager,
             file_open_policy: self.file_open_policy,
             #[cfg(feature = "native-persistence")]
@@ -214,43 +240,50 @@ impl LogRegistry {
         file_id: &str,
         operation: impl FnOnce(&mut LogReader) -> T,
     ) -> Option<T> {
-        let entry = self.reader_entry(file_id)?;
-        let _lease = entry.acquire()?;
-        Some(operation(entry.reader.lock().unwrap().as_mut()?))
+        loop {
+            let entry = self.reader_entry(file_id)?;
+            if let Some(_lease) = entry.acquire() {
+                return Some(operation(entry.reader.lock().unwrap().as_mut()?));
+            }
+        }
     }
 
     pub fn remove_reader(&self, file_id: &str) -> Option<()> {
         let uuid = Uuid::parse_str(file_id).ok()?;
-        let entry = self.open_files.get(&uuid)?.clone();
-        let reader = entry.close_and_take()?;
+        let lifecycle = self.lifecycle.state.lock().unwrap();
+        let entry = self.open_files.get(&uuid).map(|entry| entry.clone())?;
+        entry.begin_closing();
+        drop(lifecycle);
+
+        let reader = entry.wait_for_leases_and_take()?;
+        drop(reader);
+
+        let lifecycle = self.lifecycle.state.lock().unwrap();
         self.open_files
             .remove_if(&uuid, |_, current| Arc::ptr_eq(current, &entry));
-        drop(reader);
+        self.lifecycle.changed.notify_all();
+        drop(lifecycle);
         Some(())
     }
 
     fn reader_entry(&self, file_id: &str) -> Option<Arc<ReaderEntry>> {
         let uuid = Uuid::parse_str(file_id).ok()?;
-        if let Some(entry) = self.open_files.get(&uuid) {
-            return Some(entry.clone());
+        loop {
+            if let Some(entry) = self.usable_entry(uuid) {
+                return Some(entry);
+            }
+            #[cfg(feature = "native-persistence")]
+            if let Some(manager) = &self.recent_files_manager {
+                let path = manager.path_for_id(file_id)?;
+                let path = self.resolve_path(&path).ok()?;
+                self.open_with_id(uuid, &path).ok()?;
+                manager
+                    .record(file_id.to_string(), path.to_string_lossy().into_owned())
+                    .ok()?;
+                continue;
+            }
+            return None;
         }
-        #[cfg(feature = "native-persistence")]
-        if let Some(manager) = &self.recent_files_manager {
-            let path = manager.path_for_id(file_id)?;
-            let path = self.resolve_path(&path).ok()?;
-            self.open_with_id(uuid, &path).ok()?;
-            manager
-                .record(file_id.to_string(), path.to_string_lossy().into_owned())
-                .ok()?;
-        }
-        self.open_files.get(&uuid).map(|entry| entry.clone())
-    }
-
-    #[cfg(test)]
-    fn mark_closing(&self, file_id: &str) -> Option<()> {
-        let uuid = Uuid::parse_str(file_id).ok()?;
-        self.open_files.get(&uuid)?.mark_closing();
-        Some(())
     }
 
     #[cfg(test)]
@@ -275,6 +308,41 @@ impl LogRegistry {
         Some(self.open_files.get(&uuid)?.resource_weak())
     }
 
+    #[cfg(test)]
+    fn wait_for_open_waiter(&self) {
+        let mut lifecycle = self.lifecycle.state.lock().unwrap();
+        while lifecycle.opening_waiters == 0 {
+            lifecycle = self.lifecycle.changed.wait(lifecycle).unwrap();
+        }
+    }
+
+    #[cfg(test)]
+    fn pause_open_candidates(&self, barrier: Arc<std::sync::Barrier>) {
+        self.lifecycle.state.lock().unwrap().open_candidate_barrier = Some(barrier);
+    }
+
+    #[cfg(test)]
+    fn reader_entry_for_test(&self, uuid: Uuid) -> Option<Arc<ReaderEntry>> {
+        self.open_files.get(&uuid).map(|entry| entry.clone())
+    }
+
+    #[cfg(test)]
+    fn open_file_count(&self) -> usize {
+        self.open_files.len()
+    }
+
+    #[cfg(test)]
+    fn replace_reader_for_test(&self, file_id: &str, path: &Path) -> io::Result<Arc<ReaderEntry>> {
+        let uuid = Uuid::parse_str(file_id).map_err(io::Error::other)?;
+        let reader = LogReader::with_manager(
+            path.to_string_lossy().into_owned(),
+            self.visual_rules_manager.clone(),
+        )?;
+        let entry = Arc::new(ReaderEntry::new(reader));
+        self.open_files.insert(uuid, entry.clone());
+        Ok(entry)
+    }
+
     fn resolve_path(&self, path: &str) -> io::Result<PathBuf> {
         match &self.file_open_policy {
             Some(policy) => policy.validate(Path::new(path)),
@@ -283,16 +351,59 @@ impl LogRegistry {
     }
 
     fn open_with_id(&self, uuid: Uuid, path: &Path) -> io::Result<()> {
-        if self.open_files.contains_key(&uuid) {
+        loop {
+            if self.usable_entry(uuid).is_some() {
+                return Ok(());
+            }
+
+            let reader = LogReader::with_manager(
+                path.to_string_lossy().into_owned(),
+                self.visual_rules_manager.clone(),
+            )?;
+            let candidate = Arc::new(ReaderEntry::new(reader));
+            #[cfg(test)]
+            let open_candidate_barrier = self
+                .lifecycle
+                .state
+                .lock()
+                .unwrap()
+                .open_candidate_barrier
+                .clone();
+            #[cfg(test)]
+            if let Some(barrier) = open_candidate_barrier {
+                barrier.wait();
+            }
+
+            let lifecycle = self.lifecycle.state.lock().unwrap();
+            if self.open_files.contains_key(&uuid) {
+                drop(lifecycle);
+                drop(candidate);
+                continue;
+            }
+            self.open_files.insert(uuid, candidate);
+            drop(lifecycle);
             return Ok(());
         }
-        let reader = LogReader::with_manager(
-            path.to_string_lossy().into_owned(),
-            self.visual_rules_manager.clone(),
-        )?;
-        self.open_files
-            .insert(uuid, Arc::new(ReaderEntry::new(reader)));
-        Ok(())
+    }
+
+    fn usable_entry(&self, uuid: Uuid) -> Option<Arc<ReaderEntry>> {
+        let mut lifecycle = self.lifecycle.state.lock().unwrap();
+        loop {
+            let entry = self.open_files.get(&uuid).map(|entry| entry.clone())?;
+            if !entry.is_closing() {
+                return Some(entry);
+            }
+            #[cfg(test)]
+            {
+                lifecycle.opening_waiters += 1;
+                self.lifecycle.changed.notify_all();
+            }
+            lifecycle = self.lifecycle.changed.wait(lifecycle).unwrap();
+            #[cfg(test)]
+            {
+                lifecycle.opening_waiters -= 1;
+            }
+        }
     }
 
     pub fn visual_rules_state(&self) -> VisualRulesState {
@@ -330,7 +441,7 @@ impl Default for LogRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::mpsc::TryRecvError;
+    use std::sync::{Barrier, mpsc::TryRecvError};
 
     struct RedirectPolicy {
         path: PathBuf,
@@ -402,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn closing_reader_rejects_new_access_while_an_operation_is_active() {
+    fn access_during_removal_waits_until_the_reader_is_removed() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("application.log");
         std::fs::write(&path, "ready\n").unwrap();
@@ -421,12 +532,28 @@ mod tests {
         });
         started_rx.recv().unwrap();
 
-        registry.mark_closing(&file_id).unwrap();
+        let removing_registry = registry.clone();
+        let removing_file_id = file_id.clone();
+        let removal =
+            std::thread::spawn(move || removing_registry.remove_reader(&removing_file_id));
+        registry.wait_for_closing(&file_id).unwrap();
 
-        assert!(registry.with_reader(&file_id, |_| ()).is_none());
+        let accessing_registry = registry.clone();
+        let accessing_file_id = file_id.clone();
+        let (completed_tx, completed_rx) = std::sync::mpsc::channel();
+        let access = std::thread::spawn(move || {
+            completed_tx
+                .send(accessing_registry.with_reader(&accessing_file_id, |_| ()))
+                .unwrap();
+        });
+        registry.wait_for_open_waiter();
+
+        assert_eq!(completed_rx.try_recv(), Err(TryRecvError::Empty));
         release_tx.send(()).unwrap();
-        active_operation.join().unwrap();
-        assert_eq!(registry.active_leases(&file_id), Some(0));
+        assert!(active_operation.join().unwrap().is_some());
+        assert!(removal.join().unwrap().is_some());
+        assert!(completed_rx.recv().unwrap().is_none());
+        access.join().unwrap();
     }
 
     #[test]
@@ -476,13 +603,171 @@ mod tests {
         registry.wait_for_closing(&file_id).unwrap();
 
         assert_eq!(removed_rx.try_recv(), Err(TryRecvError::Empty));
-        assert!(registry.with_reader(&file_id, |_| ()).is_none());
-
         release_tx.send(()).unwrap();
         active_operation.join().unwrap();
         assert!(removed_rx.recv().unwrap().is_some());
         removal.join().unwrap();
         assert!(resources.upgrade().is_none());
+    }
+
+    #[test]
+    fn reopening_during_removal_waits_for_a_usable_replacement() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("application.log");
+        std::fs::write(&path, "ready\n").unwrap();
+        let registry = Arc::new(LogRegistry::new());
+        let file_id = registry.open_file(path.to_str().unwrap()).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let active_registry = registry.clone();
+        let active_file_id = file_id.clone();
+        let active_operation = std::thread::spawn(move || {
+            active_registry.with_reader(&active_file_id, |_| {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            })
+        });
+        started_rx.recv().unwrap();
+
+        let removing_registry = registry.clone();
+        let removing_file_id = file_id.clone();
+        let removal =
+            std::thread::spawn(move || removing_registry.remove_reader(&removing_file_id));
+        registry.wait_for_closing(&file_id).unwrap();
+
+        let reopening_registry = registry.clone();
+        let reopening_path = path.clone();
+        let reopening_file_id = file_id.clone();
+        let (opened_tx, opened_rx) = std::sync::mpsc::channel();
+        let reopening = std::thread::spawn(move || {
+            opened_tx.send(reopening_registry.open_with_id(
+                Uuid::parse_str(&reopening_file_id).unwrap(),
+                &reopening_path,
+            ))
+        });
+        registry.wait_for_open_waiter();
+
+        assert!(matches!(opened_rx.try_recv(), Err(TryRecvError::Empty)));
+        release_tx.send(()).unwrap();
+        active_operation.join().unwrap();
+        assert!(removal.join().unwrap().is_some());
+        assert!(opened_rx.recv().unwrap().is_ok());
+        assert!(reopening.join().unwrap().is_ok());
+        assert!(registry.with_reader(&file_id, |_| ()).is_some());
+    }
+
+    #[cfg(feature = "native-persistence")]
+    #[test]
+    fn persisted_access_during_removal_waits_for_restoration() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("application.log");
+        std::fs::write(&path, "ready\n").unwrap();
+        let store = crate::ConfigStore::new(directory.path().join("config"));
+        store.prepare().unwrap();
+        let registry = Arc::new(LogRegistry::builder().config_store(store).build());
+        let file_id = registry.open_file(path.to_str().unwrap()).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let active_registry = registry.clone();
+        let active_file_id = file_id.clone();
+        let active_operation = std::thread::spawn(move || {
+            active_registry.with_reader(&active_file_id, |_| {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            })
+        });
+        started_rx.recv().unwrap();
+
+        let removing_registry = registry.clone();
+        let removing_file_id = file_id.clone();
+        let removal =
+            std::thread::spawn(move || removing_registry.remove_reader(&removing_file_id));
+        registry.wait_for_closing(&file_id).unwrap();
+
+        let restoring_registry = registry.clone();
+        let restoring_file_id = file_id.clone();
+        let (completed_tx, completed_rx) = std::sync::mpsc::channel();
+        let restoration = std::thread::spawn(move || {
+            completed_tx
+                .send(restoring_registry.with_reader(&restoring_file_id, |_| "restored"))
+                .unwrap()
+        });
+        registry.wait_for_open_waiter();
+
+        assert!(matches!(completed_rx.try_recv(), Err(TryRecvError::Empty)));
+        release_tx.send(()).unwrap();
+        assert!(active_operation.join().unwrap().is_some());
+        assert!(removal.join().unwrap().is_some());
+        assert_eq!(completed_rx.recv().unwrap(), Some("restored"));
+        restoration.join().unwrap();
+    }
+
+    #[test]
+    fn concurrent_opens_keep_the_installed_reader_instance() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("application.log");
+        std::fs::write(&path, "ready\n").unwrap();
+        let registry = Arc::new(LogRegistry::new());
+        let uuid = Uuid::new_v4();
+        let barrier = Arc::new(Barrier::new(2));
+        registry.pause_open_candidates(barrier);
+
+        let first_registry = registry.clone();
+        let first_path = path.clone();
+        let first = std::thread::spawn(move || first_registry.open_with_id(uuid, &first_path));
+        let second_registry = registry.clone();
+        let second_path = path.clone();
+        let second = std::thread::spawn(move || second_registry.open_with_id(uuid, &second_path));
+
+        assert!(first.join().unwrap().is_ok());
+        assert!(second.join().unwrap().is_ok());
+        let installed = registry.reader_entry_for_test(uuid).unwrap();
+
+        registry.open_with_id(uuid, &path).unwrap();
+
+        assert_eq!(registry.open_file_count(), 1);
+        assert!(Arc::ptr_eq(
+            &installed,
+            &registry.reader_entry_for_test(uuid).unwrap()
+        ));
+    }
+
+    #[test]
+    fn removal_keeps_a_replacement_installed_while_the_original_closes() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("application.log");
+        std::fs::write(&path, "ready\n").unwrap();
+        let registry = Arc::new(LogRegistry::new());
+        let file_id = registry.open_file(path.to_str().unwrap()).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let active_registry = registry.clone();
+        let active_file_id = file_id.clone();
+        let active_operation = std::thread::spawn(move || {
+            active_registry.with_reader(&active_file_id, |_| {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            })
+        });
+        started_rx.recv().unwrap();
+
+        let removing_registry = registry.clone();
+        let removing_file_id = file_id.clone();
+        let removal =
+            std::thread::spawn(move || removing_registry.remove_reader(&removing_file_id));
+        registry.wait_for_closing(&file_id).unwrap();
+        let replacement = registry.replace_reader_for_test(&file_id, &path).unwrap();
+
+        release_tx.send(()).unwrap();
+        active_operation.join().unwrap();
+        assert!(removal.join().unwrap().is_some());
+        assert!(Arc::ptr_eq(
+            &replacement,
+            &registry
+                .reader_entry_for_test(Uuid::parse_str(&file_id).unwrap())
+                .unwrap()
+        ));
+        assert!(registry.with_reader(&file_id, |_| ()).is_some());
     }
 
     #[cfg(feature = "native-persistence")]
