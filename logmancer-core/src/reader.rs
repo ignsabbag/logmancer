@@ -222,6 +222,13 @@ impl LogReader {
             style,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn resource_weak(
+        &self,
+    ) -> std::sync::Weak<std::sync::RwLock<crate::models::log_file::LogFile>> {
+        self.handler.resource_weak()
+    }
 }
 
 #[cfg(test)]

@@ -166,6 +166,11 @@ impl LogFileHandler {
     pub fn search_previous(&mut self) {
         self.write_ops.search_previous();
     }
+
+    #[cfg(test)]
+    pub(crate) fn resource_weak(&self) -> std::sync::Weak<RwLock<LogFile>> {
+        Arc::downgrade(&self.log_file)
+    }
 }
 
 impl Drop for LogFileHandler {

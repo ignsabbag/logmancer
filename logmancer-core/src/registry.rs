@@ -7,7 +7,7 @@ use crate::{
 use dashmap::DashMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 use uuid::Uuid;
 
@@ -16,8 +16,8 @@ pub trait FileOpenPolicy: Send + Sync {
 }
 
 struct ReaderEntry {
-    reader: Mutex<LogReader>,
-    state: Arc<Mutex<ReaderState>>,
+    reader: Mutex<Option<LogReader>>,
+    state: Arc<(Mutex<ReaderState>, Condvar)>,
 }
 
 struct ReaderState {
@@ -27,23 +27,26 @@ struct ReaderState {
 }
 
 struct ReaderLease {
-    state: Arc<Mutex<ReaderState>>,
+    state: Arc<(Mutex<ReaderState>, Condvar)>,
 }
 
 impl ReaderEntry {
     fn new(reader: LogReader) -> Self {
         Self {
-            reader: Mutex::new(reader),
-            state: Arc::new(Mutex::new(ReaderState {
-                active_leases: 0,
-                closing: false,
-                last_access: Instant::now(),
-            })),
+            reader: Mutex::new(Some(reader)),
+            state: Arc::new((
+                Mutex::new(ReaderState {
+                    active_leases: 0,
+                    closing: false,
+                    last_access: Instant::now(),
+                }),
+                Condvar::new(),
+            )),
         }
     }
 
     fn acquire(&self) -> Option<ReaderLease> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state.0.lock().unwrap();
         if state.closing {
             return None;
         }
@@ -54,20 +57,62 @@ impl ReaderEntry {
         })
     }
 
+    fn close_and_take(&self) -> Option<LogReader> {
+        let (state_lock, leases_drained) = &*self.state;
+        let mut state = state_lock.lock().unwrap();
+        state.closing = true;
+        leases_drained.notify_all();
+        while state.active_leases > 0 {
+            state = leases_drained.wait(state).unwrap();
+        }
+        drop(state);
+
+        self.reader
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .take()
+    }
+
     #[cfg(test)]
     fn mark_closing(&self) {
-        self.state.lock().unwrap().closing = true;
+        self.state.0.lock().unwrap().closing = true;
     }
 
     #[cfg(test)]
     fn active_leases(&self) -> usize {
-        self.state.lock().unwrap().active_leases
+        self.state.0.lock().unwrap().active_leases
+    }
+
+    #[cfg(test)]
+    fn wait_for_closing(&self) {
+        let (state_lock, closing_changed) = &*self.state;
+        let mut state = state_lock.lock().unwrap();
+        while !state.closing {
+            state = closing_changed.wait(state).unwrap();
+        }
+    }
+
+    #[cfg(test)]
+    fn resource_weak(
+        &self,
+    ) -> std::sync::Weak<std::sync::RwLock<crate::models::log_file::LogFile>> {
+        self.reader
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .resource_weak()
     }
 }
 
 impl Drop for ReaderLease {
     fn drop(&mut self) {
-        self.state.lock().unwrap().active_leases -= 1;
+        let (state_lock, leases_drained) = &*self.state;
+        let mut state = state_lock.lock().unwrap();
+        state.active_leases -= 1;
+        if state.active_leases == 0 {
+            leases_drained.notify_all();
+        }
     }
 }
 
@@ -171,7 +216,17 @@ impl LogRegistry {
     ) -> Option<T> {
         let entry = self.reader_entry(file_id)?;
         let _lease = entry.acquire()?;
-        Some(operation(&mut entry.reader.lock().unwrap()))
+        Some(operation(entry.reader.lock().unwrap().as_mut()?))
+    }
+
+    pub fn remove_reader(&self, file_id: &str) -> Option<()> {
+        let uuid = Uuid::parse_str(file_id).ok()?;
+        let entry = self.open_files.get(&uuid)?.clone();
+        let reader = entry.close_and_take()?;
+        self.open_files
+            .remove_if(&uuid, |_, current| Arc::ptr_eq(current, &entry));
+        drop(reader);
+        Some(())
     }
 
     fn reader_entry(&self, file_id: &str) -> Option<Arc<ReaderEntry>> {
@@ -202,6 +257,22 @@ impl LogRegistry {
     fn active_leases(&self, file_id: &str) -> Option<usize> {
         let uuid = Uuid::parse_str(file_id).ok()?;
         Some(self.open_files.get(&uuid)?.active_leases())
+    }
+
+    #[cfg(test)]
+    fn wait_for_closing(&self, file_id: &str) -> Option<()> {
+        let uuid = Uuid::parse_str(file_id).ok()?;
+        self.open_files.get(&uuid)?.wait_for_closing();
+        Some(())
+    }
+
+    #[cfg(test)]
+    fn resource_weak(
+        &self,
+        file_id: &str,
+    ) -> Option<std::sync::Weak<std::sync::RwLock<crate::models::log_file::LogFile>>> {
+        let uuid = Uuid::parse_str(file_id).ok()?;
+        Some(self.open_files.get(&uuid)?.resource_weak())
     }
 
     fn resolve_path(&self, path: &str) -> io::Result<PathBuf> {
@@ -259,6 +330,7 @@ impl Default for LogRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::mpsc::TryRecvError;
 
     struct RedirectPolicy {
         path: PathBuf,
@@ -355,6 +427,62 @@ mod tests {
         release_tx.send(()).unwrap();
         active_operation.join().unwrap();
         assert_eq!(registry.active_leases(&file_id), Some(0));
+    }
+
+    #[test]
+    fn removing_an_idle_reader_releases_its_resources() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("application.log");
+        std::fs::write(&path, "ready\n").unwrap();
+        let registry = LogRegistry::new();
+        let file_id = registry.open_file(path.to_str().unwrap()).unwrap();
+        let resources = registry.resource_weak(&file_id).unwrap();
+
+        assert!(registry.remove_reader(&file_id).is_some());
+
+        assert!(resources.upgrade().is_none());
+        assert!(registry.with_reader(&file_id, |_| ()).is_none());
+    }
+
+    #[test]
+    fn removing_a_reader_waits_for_an_active_lease() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("application.log");
+        std::fs::write(&path, "ready\n").unwrap();
+        let registry = Arc::new(LogRegistry::new());
+        let file_id = registry.open_file(path.to_str().unwrap()).unwrap();
+        let resources = registry.resource_weak(&file_id).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let active_registry = registry.clone();
+        let active_file_id = file_id.clone();
+
+        let active_operation = std::thread::spawn(move || {
+            active_registry.with_reader(&active_file_id, |_| {
+                started_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            })
+        });
+        started_rx.recv().unwrap();
+
+        let removing_registry = registry.clone();
+        let removing_file_id = file_id.clone();
+        let (removed_tx, removed_rx) = std::sync::mpsc::channel();
+        let removal = std::thread::spawn(move || {
+            removed_tx
+                .send(removing_registry.remove_reader(&removing_file_id))
+                .unwrap();
+        });
+        registry.wait_for_closing(&file_id).unwrap();
+
+        assert_eq!(removed_rx.try_recv(), Err(TryRecvError::Empty));
+        assert!(registry.with_reader(&file_id, |_| ()).is_none());
+
+        release_tx.send(()).unwrap();
+        active_operation.join().unwrap();
+        assert!(removed_rx.recv().unwrap().is_some());
+        removal.join().unwrap();
+        assert!(resources.upgrade().is_none());
     }
 
     #[cfg(feature = "native-persistence")]
