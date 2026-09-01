@@ -127,6 +127,7 @@ mod tests {
             let page = registry
                 .with_reader(&file_id, |reader| reader.read_page(0, 1))
                 .unwrap()
+                .unwrap()
                 .unwrap();
             highlighted = page.lines.first().is_some_and(|line| line.style.is_some());
             if highlighted {
@@ -163,7 +164,10 @@ mod tests {
         let registry = registry_runtime(directory.path().join("config"), None);
         let file_id = try_open_initial_file(&registry, log_path.to_str());
 
-        assert!(registry.with_reader(&file_id.unwrap(), |_| ()).is_some());
+        assert!(matches!(
+            registry.with_reader(&file_id.unwrap(), |_| ()),
+            Ok(Some(()))
+        ));
     }
 }
 

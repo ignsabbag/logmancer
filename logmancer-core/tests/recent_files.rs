@@ -1,6 +1,28 @@
 #![cfg(feature = "native-persistence")]
 
-use logmancer_core::{ConfigStore, LogRegistry};
+use logmancer_core::{ConfigStore, FileOpenPolicy, LogRegistry};
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+struct RejectPolicy;
+
+impl FileOpenPolicy for RejectPolicy {
+    fn validate(&self, _path: &Path) -> io::Result<PathBuf> {
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "persisted file is not authorized",
+        ))
+    }
+}
+
+struct FailingPolicy;
+
+impl FileOpenPolicy for FailingPolicy {
+    fn validate(&self, _path: &Path) -> io::Result<PathBuf> {
+        Err(io::Error::other("policy service unavailable"))
+    }
+}
 
 fn registry(directory: &std::path::Path) -> LogRegistry {
     let store = ConfigStore::new(directory.to_path_buf());
@@ -19,7 +41,7 @@ fn reopening_a_file_reuses_its_persisted_id_after_restart() {
     drop(first);
 
     let restarted = registry(&directory.path().join("config"));
-    assert!(restarted.with_reader(&id, |_| ()).is_some());
+    assert!(matches!(restarted.with_reader(&id, |_| ()), Ok(Some(()))));
 }
 
 #[test]
@@ -33,7 +55,7 @@ fn ephemeral_opening_is_not_restored_after_restart() {
     drop(first);
 
     let restarted = registry(&directory.path().join("config"));
-    assert!(restarted.with_reader(&id, |_| ()).is_none());
+    assert!(matches!(restarted.with_reader(&id, |_| ()), Ok(None)));
 }
 
 #[test]
@@ -49,8 +71,11 @@ fn persistent_history_keeps_only_the_ten_most_recent_files() {
     drop(open_registry);
 
     let restarted = registry(&directory.path().join("config"));
-    assert!(restarted.with_reader(&ids[0], |_| ()).is_none());
-    assert!(restarted.with_reader(&ids[10], |_| ()).is_some());
+    assert!(matches!(restarted.with_reader(&ids[0], |_| ()), Ok(None)));
+    assert!(matches!(
+        restarted.with_reader(&ids[10], |_| ()),
+        Ok(Some(()))
+    ));
 }
 
 #[test]
@@ -73,8 +98,91 @@ fn concurrent_registries_merge_recent_file_updates() {
     drop((first_registry, second_registry));
 
     let restarted = registry(&config);
-    assert!(restarted.with_reader(&first_id, |_| ()).is_some());
-    assert!(restarted.with_reader(&second_id, |_| ()).is_some());
+    assert!(matches!(
+        restarted.with_reader(&first_id, |_| ()),
+        Ok(Some(()))
+    ));
+    assert!(matches!(
+        restarted.with_reader(&second_id, |_| ()),
+        Ok(Some(()))
+    ));
+}
+
+#[test]
+fn deleted_persisted_file_returns_not_found_restoration_error() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("deleted.log");
+    std::fs::write(&file, "INFO ready\n").unwrap();
+    let config = directory.path().join("config");
+    let first = registry(&config);
+    let id = first.open_file(file.to_str().unwrap()).unwrap();
+    drop(first);
+    std::fs::remove_file(file).unwrap();
+
+    let error = registry(&config).with_reader(&id, |_| ()).unwrap_err();
+
+    assert_eq!(error.kind(), io::ErrorKind::NotFound);
+    assert!(error.to_string().contains("restore persisted reader"));
+}
+
+#[test]
+fn rejected_persisted_file_returns_permission_denied_restoration_error() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("restricted.log");
+    std::fs::write(&file, "INFO ready\n").unwrap();
+    let config = directory.path().join("config");
+    let first = registry(&config);
+    let id = first.open_file(file.to_str().unwrap()).unwrap();
+    drop(first);
+    let store = ConfigStore::new(config);
+    store.prepare().unwrap();
+    let restarted = LogRegistry::builder()
+        .config_store(store)
+        .file_open_policy(Arc::new(RejectPolicy))
+        .build();
+
+    let error = restarted.with_reader(&id, |_| ()).unwrap_err();
+
+    assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+    assert!(error.to_string().contains("restore persisted reader"));
+}
+
+#[test]
+fn other_persisted_restoration_failures_preserve_error_kind_and_context() {
+    let directory = tempfile::tempdir().unwrap();
+    let file = directory.path().join("application.log");
+    std::fs::write(&file, "INFO ready\n").unwrap();
+    let config = directory.path().join("config");
+    let first = registry(&config);
+    let id = first.open_file(file.to_str().unwrap()).unwrap();
+    drop(first);
+    let store = ConfigStore::new(config);
+    store.prepare().unwrap();
+    let restarted = LogRegistry::builder()
+        .config_store(store)
+        .file_open_policy(Arc::new(FailingPolicy))
+        .build();
+
+    let error = restarted.with_reader(&id, |_| ()).unwrap_err();
+
+    assert_eq!(error.kind(), io::ErrorKind::Other);
+    assert!(error.to_string().contains("restore persisted reader"));
+    assert!(error.to_string().contains("policy service unavailable"));
+}
+
+#[test]
+fn invalid_and_unknown_ids_return_none() {
+    let directory = tempfile::tempdir().unwrap();
+    let registry = registry(directory.path());
+
+    assert!(matches!(
+        registry.with_reader("not-a-uuid", |_| ()),
+        Ok(None)
+    ));
+    assert!(matches!(
+        registry.with_reader("00000000-0000-0000-0000-000000000000", |_| ()),
+        Ok(None)
+    ));
 }
 
 #[test]

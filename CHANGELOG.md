@@ -9,6 +9,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 ### Changed
 
 - The core registry can now remove inactive readers after their active operations finish, releasing their workers, memory map, indexes, filter state, and search state.
+- Persisted reader restoration now reports actionable missing and authorization failures instead of treating them as unopened files.
 
 ## [0.4.1] - 2026-08-28
 

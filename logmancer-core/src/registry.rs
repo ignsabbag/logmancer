@@ -239,11 +239,17 @@ impl LogRegistry {
         &self,
         file_id: &str,
         operation: impl FnOnce(&mut LogReader) -> T,
-    ) -> Option<T> {
+    ) -> io::Result<Option<T>> {
         loop {
-            let entry = self.reader_entry(file_id)?;
+            let Some(entry) = self.reader_entry(file_id)? else {
+                return Ok(None);
+            };
             if let Some(_lease) = entry.acquire() {
-                return Some(operation(entry.reader.lock().unwrap().as_mut()?));
+                let mut reader = entry.reader.lock().unwrap();
+                let Some(reader) = reader.as_mut() else {
+                    return Ok(None);
+                };
+                return Ok(Some(operation(reader)));
             }
         }
     }
@@ -266,23 +272,30 @@ impl LogRegistry {
         Some(())
     }
 
-    fn reader_entry(&self, file_id: &str) -> Option<Arc<ReaderEntry>> {
-        let uuid = Uuid::parse_str(file_id).ok()?;
+    fn reader_entry(&self, file_id: &str) -> io::Result<Option<Arc<ReaderEntry>>> {
+        let Ok(uuid) = Uuid::parse_str(file_id) else {
+            return Ok(None);
+        };
         loop {
             if let Some(entry) = self.usable_entry(uuid) {
-                return Some(entry);
+                return Ok(Some(entry));
             }
             #[cfg(feature = "native-persistence")]
             if let Some(manager) = &self.recent_files_manager {
-                let path = manager.path_for_id(file_id)?;
-                let path = self.resolve_path(&path).ok()?;
-                self.open_with_id(uuid, &path).ok()?;
+                let Some(path) = manager.path_for_id(file_id) else {
+                    return Ok(None);
+                };
+                let path = self
+                    .resolve_path(&path)
+                    .map_err(|error| Self::restoration_error("resolve its path", error))?;
+                self.open_with_id(uuid, &path)
+                    .map_err(|error| Self::restoration_error("open its file", error))?;
                 manager
                     .record(file_id.to_string(), path.to_string_lossy().into_owned())
-                    .ok()?;
+                    .map_err(|error| Self::restoration_error("update recent files", error))?;
                 continue;
             }
-            return None;
+            return Ok(None);
         }
     }
 
@@ -348,6 +361,13 @@ impl LogRegistry {
             Some(policy) => policy.validate(Path::new(path)),
             None => Path::new(path).canonicalize(),
         }
+    }
+
+    fn restoration_error(action: &str, error: io::Error) -> io::Error {
+        io::Error::new(
+            error.kind(),
+            format!("Could not restore persisted reader while attempting to {action}: {error}"),
+        )
     }
 
     fn open_with_id(&self, uuid: Uuid, path: &Path) -> io::Result<()> {
@@ -478,6 +498,7 @@ mod tests {
         let file_info = registry
             .with_reader(&file_id, |reader| reader.file_info())
             .unwrap()
+            .unwrap()
             .unwrap();
 
         assert_eq!(file_info.path, allowed_path.to_string_lossy());
@@ -508,7 +529,12 @@ mod tests {
             Err::<(), _>(io::Error::other("operation failed"))
         });
 
-        assert!(result.expect("reader is available").is_err());
+        assert!(
+            result
+                .expect("registry access succeeds")
+                .expect("reader is available")
+                .is_err()
+        );
         assert_eq!(registry.active_leases(&file_id), Some(0));
     }
 
@@ -548,11 +574,11 @@ mod tests {
         });
         registry.wait_for_open_waiter();
 
-        assert_eq!(completed_rx.try_recv(), Err(TryRecvError::Empty));
+        assert!(matches!(completed_rx.try_recv(), Err(TryRecvError::Empty)));
         release_tx.send(()).unwrap();
-        assert!(active_operation.join().unwrap().is_some());
+        assert!(active_operation.join().unwrap().unwrap().is_some());
         assert!(removal.join().unwrap().is_some());
-        assert!(completed_rx.recv().unwrap().is_none());
+        assert!(completed_rx.recv().unwrap().unwrap().is_none());
         access.join().unwrap();
     }
 
@@ -568,7 +594,7 @@ mod tests {
         assert!(registry.remove_reader(&file_id).is_some());
 
         assert!(resources.upgrade().is_none());
-        assert!(registry.with_reader(&file_id, |_| ()).is_none());
+        assert!(matches!(registry.with_reader(&file_id, |_| ()), Ok(None)));
     }
 
     #[test]
@@ -604,7 +630,7 @@ mod tests {
 
         assert_eq!(removed_rx.try_recv(), Err(TryRecvError::Empty));
         release_tx.send(()).unwrap();
-        active_operation.join().unwrap();
+        assert!(matches!(active_operation.join().unwrap(), Ok(Some(()))));
         assert!(removed_rx.recv().unwrap().is_some());
         removal.join().unwrap();
         assert!(resources.upgrade().is_none());
@@ -649,11 +675,14 @@ mod tests {
 
         assert!(matches!(opened_rx.try_recv(), Err(TryRecvError::Empty)));
         release_tx.send(()).unwrap();
-        active_operation.join().unwrap();
+        assert!(matches!(active_operation.join().unwrap(), Ok(Some(()))));
         assert!(removal.join().unwrap().is_some());
         assert!(opened_rx.recv().unwrap().is_ok());
         assert!(reopening.join().unwrap().is_ok());
-        assert!(registry.with_reader(&file_id, |_| ()).is_some());
+        assert!(matches!(
+            registry.with_reader(&file_id, |_| ()),
+            Ok(Some(()))
+        ));
     }
 
     #[cfg(feature = "native-persistence")]
@@ -696,9 +725,9 @@ mod tests {
 
         assert!(matches!(completed_rx.try_recv(), Err(TryRecvError::Empty)));
         release_tx.send(()).unwrap();
-        assert!(active_operation.join().unwrap().is_some());
+        assert!(active_operation.join().unwrap().unwrap().is_some());
         assert!(removal.join().unwrap().is_some());
-        assert_eq!(completed_rx.recv().unwrap(), Some("restored"));
+        assert_eq!(completed_rx.recv().unwrap().unwrap(), Some("restored"));
         restoration.join().unwrap();
     }
 
@@ -759,7 +788,7 @@ mod tests {
         let replacement = registry.replace_reader_for_test(&file_id, &path).unwrap();
 
         release_tx.send(()).unwrap();
-        active_operation.join().unwrap();
+        assert!(matches!(active_operation.join().unwrap(), Ok(Some(()))));
         assert!(removal.join().unwrap().is_some());
         assert!(Arc::ptr_eq(
             &replacement,
@@ -767,7 +796,10 @@ mod tests {
                 .reader_entry_for_test(Uuid::parse_str(&file_id).unwrap())
                 .unwrap()
         ));
-        assert!(registry.with_reader(&file_id, |_| ()).is_some());
+        assert!(matches!(
+            registry.with_reader(&file_id, |_| ()),
+            Ok(Some(()))
+        ));
     }
 
     #[cfg(feature = "native-persistence")]

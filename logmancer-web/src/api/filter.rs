@@ -1,5 +1,5 @@
 use crate::api::commons::{ApplyFilterRequest, ReadFilterRequest};
-use crate::api::config::AppState;
+use crate::api::config::{restoration_error_response, AppState};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -19,8 +19,9 @@ pub async fn apply_filter(
         .registry
         .with_reader(&payload.file_id, |reader| reader.filter(payload.filter))
     {
-        Some(()) => (StatusCode::OK, Json("Filter applied")).into_response(),
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(Some(())) => (StatusCode::OK, Json("Filter applied")).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }
 
@@ -33,7 +34,7 @@ pub async fn read_filter_page(
     match app_state.registry.with_reader(&query.file_id, |reader| {
         reader.read_filter(query.start_line, query.max_lines)
     }) {
-        Some(result) => match result {
+        Ok(Some(result)) => match result {
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -41,6 +42,7 @@ pub async fn read_filter_page(
             )
                 .into_response(),
         },
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }
