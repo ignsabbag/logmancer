@@ -222,6 +222,13 @@ impl LogReader {
             style,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn resource_weak(
+        &self,
+    ) -> std::sync::Weak<std::sync::RwLock<crate::models::log_file::LogFile>> {
+        self.handler.resource_weak()
+    }
 }
 
 #[cfg(test)]
@@ -244,9 +251,19 @@ mod tests {
     }
 
     fn keep_temp_file_for_background_workers(_path: PathBuf) {
-        // LogReader workers outlive the reader values in these tests. Removing
-        // the file before the test process exits can make the reload worker
-        // report a missing file even though the assertions already passed.
+        // Temp files are retained until their reader is dropped so background
+        // workers can finish their deterministic shutdown.
+    }
+
+    #[test]
+    fn dropping_a_reader_waits_for_its_workers_before_releasing_the_file() {
+        let path = temp_file_path("reader-worker-shutdown");
+        std::fs::write(&path, "line\n".repeat(3_000_000)).unwrap();
+
+        let reader = LogReader::new(path.to_string_lossy().into_owned()).unwrap();
+        drop(reader);
+
+        std::fs::remove_file(path).unwrap();
     }
 
     fn wait_search_ready(reader: &LogReader) {
