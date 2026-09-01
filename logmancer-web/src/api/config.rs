@@ -21,6 +21,24 @@ pub struct AppState {
     pub server_file_root: Option<ServerFileRoot>,
 }
 
+pub(crate) fn restoration_error_response(error: &std::io::Error) -> axum::response::Response {
+    let (status, message) = match error.kind() {
+        std::io::ErrorKind::NotFound => (
+            axum::http::StatusCode::NOT_FOUND,
+            "The persisted file is no longer available",
+        ),
+        std::io::ErrorKind::PermissionDenied => (
+            axum::http::StatusCode::FORBIDDEN,
+            "Access to the persisted file is not permitted",
+        ),
+        _ => (
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            "Could not restore the persisted file",
+        ),
+    };
+    axum::response::IntoResponse::into_response((status, axum::Json(message)))
+}
+
 pub fn api_routes_with_registry<T>(registry: Arc<LogRegistry>) -> Router<T> {
     let server_file_root = ServerFileRoot::from_env();
 
@@ -56,11 +74,32 @@ pub fn api_routes<T>() -> Router<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::body::Body;
+    use axum::body::{to_bytes, Body};
     use axum::http::{Method, Request, StatusCode};
-    use logmancer_core::{ConfigStore, VisualRulesEnvelope};
+    use logmancer_core::{ConfigStore, FileOpenPolicy, VisualRulesEnvelope};
+    use std::io;
+    use std::path::{Path, PathBuf};
     use std::sync::Arc;
     use tower::ServiceExt;
+
+    struct RejectPolicy;
+
+    impl FileOpenPolicy for RejectPolicy {
+        fn validate(&self, _path: &Path) -> io::Result<PathBuf> {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "persisted path is not authorized",
+            ))
+        }
+    }
+
+    struct FailingPolicy;
+
+    impl FileOpenPolicy for FailingPolicy {
+        fn validate(&self, _path: &Path) -> io::Result<PathBuf> {
+            Err(io::Error::other("internal policy failure"))
+        }
+    }
 
     fn visual_rules_router() -> Router {
         let directory = tempfile::tempdir().unwrap().keep();
@@ -69,6 +108,36 @@ mod tests {
         let registry = Arc::new(LogRegistry::builder().config_store(config_store).build());
         registry.reload_visual_rules().unwrap();
         api_routes_with_registry(registry)
+    }
+
+    fn persisted_file_id(config: &Path, path: &Path) -> String {
+        let store = ConfigStore::new(config.to_path_buf());
+        store.prepare().unwrap();
+        let registry = LogRegistry::builder().config_store(store).build();
+        registry.open_file(path.to_str().unwrap()).unwrap()
+    }
+
+    fn restored_registry(
+        config: &Path,
+        file_open_policy: Option<Arc<dyn FileOpenPolicy>>,
+    ) -> Arc<LogRegistry> {
+        let store = ConfigStore::new(config.to_path_buf());
+        store.prepare().unwrap();
+        let mut builder = LogRegistry::builder().config_store(store);
+        if let Some(file_open_policy) = file_open_policy {
+            builder = builder.file_open_policy(file_open_policy);
+        }
+        Arc::new(builder.build())
+    }
+
+    async fn response_body(response: axum::response::Response) -> String {
+        String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap()
     }
 
     #[tokio::test]
@@ -85,6 +154,97 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn persisted_restoration_errors_have_safe_actionable_http_responses() {
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("config");
+        let missing_path = directory.path().join("sensitive-missing.log");
+        std::fs::write(&missing_path, "INFO ready\n").unwrap();
+        let missing_id = persisted_file_id(&config, &missing_path);
+        std::fs::remove_file(&missing_path).unwrap();
+        let missing_response = api_routes_with_registry::<()>(restored_registry(&config, None))
+            .oneshot(
+                Request::builder()
+                    .uri(format!("/file_info?file_id={missing_id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let missing_status = missing_response.status();
+        let missing_body = response_body(missing_response).await;
+        assert_eq!(missing_status, StatusCode::NOT_FOUND);
+        assert_eq!(
+            missing_body,
+            "\"The persisted file is no longer available\""
+        );
+
+        let restricted_path = directory.path().join("sensitive-restricted.log");
+        std::fs::write(&restricted_path, "INFO ready\n").unwrap();
+        let restricted_id = persisted_file_id(&config, &restricted_path);
+        let restricted_response = api_routes_with_registry::<()>(restored_registry(
+            &config,
+            Some(Arc::new(RejectPolicy)),
+        ))
+        .oneshot(
+            Request::builder()
+                .uri(format!("/file_info?file_id={restricted_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        let restricted_status = restricted_response.status();
+        let restricted_body = response_body(restricted_response).await;
+        assert_eq!(restricted_status, StatusCode::FORBIDDEN);
+        assert_eq!(
+            restricted_body,
+            "\"Access to the persisted file is not permitted\""
+        );
+
+        let failed_path = directory.path().join("sensitive-failed.log");
+        std::fs::write(&failed_path, "INFO ready\n").unwrap();
+        let failed_id = persisted_file_id(&config, &failed_path);
+        let failed_response = api_routes_with_registry::<()>(restored_registry(
+            &config,
+            Some(Arc::new(FailingPolicy)),
+        ))
+        .oneshot(
+            Request::builder()
+                .uri(format!("/file_info?file_id={failed_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+        let failed_status = failed_response.status();
+        let failed_body = response_body(failed_response).await;
+        assert_eq!(failed_status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(failed_body, "\"Could not restore the persisted file\"");
+
+        for path in [&missing_path, &restricted_path, &failed_path] {
+            assert!(!missing_body.contains(&path.display().to_string()));
+            assert!(!restricted_body.contains(&path.display().to_string()));
+            assert!(!failed_body.contains(&path.display().to_string()));
+        }
+    }
+
+    #[tokio::test]
+    async fn absent_file_id_remains_a_generic_not_found() {
+        let response = api_routes_with_registry::<()>(Arc::new(LogRegistry::new()))
+            .oneshot(
+                Request::builder()
+                    .uri("/file_info?file_id=00000000-0000-0000-0000-000000000000")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(response_body(response).await, "\"File not opened\"");
     }
 
     #[tokio::test]

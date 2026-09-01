@@ -150,6 +150,7 @@ fn wait_for_indexed_lines(registry: &LogRegistry, file_id: &str, expected: usize
     for _ in 0..20 {
         if registry
             .with_reader(file_id, |reader| reader.file_info())
+            .expect("registry access")
             .expect("reader")
             .expect("file info")
             .total_lines
@@ -183,6 +184,7 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
 
     let first_page = registry
         .with_reader(&first_id, |reader| reader.read_page(0, 3))
+        .expect("registry access")
         .expect("first reader")
         .expect("read page");
     assert_eq!(
@@ -207,6 +209,7 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
     wait_for_indexed_lines(&registry, &second_id, 3);
     let second_page = registry
         .with_reader(&second_id, |reader| reader.read_page(0, 3))
+        .expect("registry access")
         .expect("second reader")
         .expect("read future reader");
     assert_eq!(second_page.lines[1].style, None);
@@ -223,6 +226,7 @@ fn registry_readers_capture_global_snapshot_without_changing_filter_search_or_na
             let status = reader.search_status();
             (filtered, searched, status)
         })
+        .expect("registry access")
         .expect("first reader");
     let filtered = filtered.expect("filtered read");
     assert_eq!(

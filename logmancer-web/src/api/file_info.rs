@@ -1,5 +1,5 @@
 use crate::api::commons::FileInfoRequest;
-use crate::api::config::AppState;
+use crate::api::config::{restoration_error_response, AppState};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -15,7 +15,7 @@ pub async fn file_info(
         .registry
         .with_reader(&query.file_id, |reader| reader.file_info())
     {
-        Some(result) => match result {
+        Ok(Some(result)) => match result {
             Ok(file_info) => (StatusCode::OK, Json(file_info)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -23,6 +23,7 @@ pub async fn file_info(
             )
                 .into_response(),
         },
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }

@@ -228,6 +228,7 @@ mod tests {
                 .with_reader(&file_id, |reader| reader.file_info())
                 .unwrap()
                 .unwrap()
+                .unwrap()
                 .total_lines
                 >= 2
             {
@@ -238,6 +239,7 @@ mod tests {
 
         let info = registry
             .with_reader(&file_id, |reader| reader.file_info())
+            .unwrap()
             .unwrap()
             .unwrap();
 
@@ -267,7 +269,10 @@ mod tests {
 
         let file_id = open_dropped_log_path(&registry, path).unwrap();
 
-        assert!(registry.with_reader(&file_id, |_| ()).is_some());
+        assert!(matches!(
+            registry.with_reader(&file_id, |_| ()),
+            Ok(Some(()))
+        ));
     }
 
     #[test]
@@ -284,6 +289,7 @@ mod tests {
             .unwrap();
         let info = registry
             .with_reader(&file_id, |reader| reader.file_info())
+            .unwrap()
             .unwrap()
             .unwrap();
 

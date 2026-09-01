@@ -1,5 +1,5 @@
 use crate::api::commons::{ApplySearchRequest, SearchNavigateRequest, SearchStatusRequest};
-use crate::api::config::AppState;
+use crate::api::config::{restoration_error_response, AppState};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -12,7 +12,7 @@ pub async fn apply_search(
     match app_state.registry.with_reader(&payload.file_id, |reader| {
         reader.apply_search(payload.query, payload.max_lines)
     }) {
-        Some(result) => match result {
+        Ok(Some(result)) => match result {
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::BAD_REQUEST,
@@ -20,7 +20,8 @@ pub async fn apply_search(
             )
                 .into_response(),
         },
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }
 
@@ -32,8 +33,9 @@ pub async fn clear_search(
         .registry
         .with_reader(&query.file_id, |reader| reader.clear_search())
     {
-        Some(()) => (StatusCode::OK, Json("Search cleared")).into_response(),
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(Some(())) => (StatusCode::OK, Json("Search cleared")).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }
 
@@ -45,8 +47,9 @@ pub async fn search_status(
         .registry
         .with_reader(&query.file_id, |reader| reader.search_status())
     {
-        Some(status) => (StatusCode::OK, Json(status)).into_response(),
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(Some(status)) => (StatusCode::OK, Json(status)).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }
 
@@ -58,7 +61,7 @@ pub async fn search_next(
         .registry
         .with_reader(&query.file_id, |reader| reader.search_next(query.max_lines))
     {
-        Some(result) => match result {
+        Ok(Some(result)) => match result {
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -66,7 +69,8 @@ pub async fn search_next(
             )
                 .into_response(),
         },
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }
 
@@ -77,7 +81,7 @@ pub async fn search_previous(
     match app_state.registry.with_reader(&query.file_id, |reader| {
         reader.search_previous(query.max_lines)
     }) {
-        Some(result) => match result {
+        Ok(Some(result)) => match result {
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -85,6 +89,7 @@ pub async fn search_previous(
             )
                 .into_response(),
         },
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }

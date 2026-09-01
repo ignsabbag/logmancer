@@ -1,5 +1,5 @@
 use crate::api::commons::{ReadPageRequest, TailRequest};
-use crate::api::config::AppState;
+use crate::api::config::{restoration_error_response, AppState};
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -15,7 +15,7 @@ pub async fn read_page(
     match app_state.registry.with_reader(&query.file_id, |reader| {
         reader.read_page(query.start_line, query.max_lines)
     }) {
-        Some(result) => match result {
+        Ok(Some(result)) => match result {
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -23,7 +23,8 @@ pub async fn read_page(
             )
                 .into_response(),
         },
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }
 
@@ -36,7 +37,7 @@ pub async fn tail(
     match app_state.registry.with_reader(&query.file_id, |reader| {
         reader.tail(query.max_lines, query.follow)
     }) {
-        Some(result) => match result {
+        Ok(Some(result)) => match result {
             Ok(page_result) => (StatusCode::OK, Json(page_result)).into_response(),
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -44,6 +45,7 @@ pub async fn tail(
             )
                 .into_response(),
         },
-        None => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, Json("File not opened")).into_response(),
+        Err(error) => restoration_error_response(&error),
     }
 }
