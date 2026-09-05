@@ -205,6 +205,15 @@ impl LogReader {
         self.search_positioned_page(max_lines)
     }
 
+    pub(crate) fn retention_usage(&self) -> (usize, usize) {
+        self.handler.retention_usage()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_retention_index_entries_for_test(&self, entries: usize) {
+        self.handler.set_retention_index_entries_for_test(entries);
+    }
+
     fn search_positioned_page(&mut self, max_lines: usize) -> io::Result<PageResult> {
         let status = self.search_status();
         let start = status
