@@ -6,6 +6,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Changed
+
+- The core registry can now remove inactive readers after their active operations finish, releasing their workers, memory map, indexes, filter state, and search state.
+
 ## [0.4.1] - 2026-08-28
 
 ### Added

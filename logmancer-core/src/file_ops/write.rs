@@ -213,7 +213,14 @@ mod tests {
 
         let worker_ops = FileWriteOps::new(Arc::clone(&log_file));
         let (tx, rx) = unbounded::<SearchCommand>();
-        spawn_search_worker(worker_ops, rx);
+        let (shutdown_tx, shutdown_rx) = unbounded();
+        let worker = spawn_search_worker(
+            worker_ops,
+            rx,
+            shutdown_rx,
+            #[cfg(test)]
+            None,
+        );
 
         let generation = 1u64;
         write_ops.begin_search(generation, "foo".to_string(), 2);
@@ -232,6 +239,8 @@ mod tests {
         assert_eq!(status.total_matches, 3);
         assert_eq!(status.first.unwrap().line_index, 0);
 
+        shutdown_tx.send(()).unwrap();
+        worker.join().unwrap();
         std::fs::remove_file(path).unwrap();
     }
 
