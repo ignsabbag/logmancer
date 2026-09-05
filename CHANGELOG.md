@@ -10,6 +10,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 - The core registry can now remove inactive readers after their active operations finish, releasing their workers, memory map, indexes, filter state, and search state.
 - Persisted reader restoration now reports actionable missing and authorization failures instead of treating them as unopened files.
+- The core registry now retains idle readers on file open using a 30-minute TTL and a soft 256 MiB index budget, while transparently restoring evicted persisted readers on access.
 
 ## [0.4.1] - 2026-08-28
 

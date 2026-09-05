@@ -28,7 +28,7 @@ pub use models::visual_rules::{
 pub use reader::LogReader;
 #[cfg(feature = "native-persistence")]
 pub use recent_files::{MAX_RECENT_FILES, RecentFile, RecentFilesEnvelope, RecentFilesManager};
-pub use registry::{FileOpenPolicy, LogRegistry, LogRegistryBuilder};
+pub use registry::{FileOpenPolicy, LogRegistry, LogRegistryBuilder, RetentionPolicy};
 pub use visual_rules::VisualRuleEvaluator;
 pub use visual_rules_manager::{
     SaveOutcome, SaveResult, VisualRulesError, VisualRulesManager, VisualRulesState,

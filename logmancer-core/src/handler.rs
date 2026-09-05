@@ -7,6 +7,7 @@ use crate::workers::{
 };
 use crossbeam_channel::{Sender, unbounded};
 use log::info;
+use std::mem::size_of;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 use std::{io, thread, time};
@@ -117,6 +118,26 @@ impl LogFileHandler {
 
     pub fn read_ops(&self) -> FileReadOps<'_> {
         FileReadOps::new(self.log_file.read().unwrap())
+    }
+
+    pub(crate) fn retention_usage(&self) -> (usize, usize) {
+        let log_file = self.log_file.read().unwrap();
+        let search_matches = log_file
+            .search
+            .session
+            .as_ref()
+            .map_or(0, |session| session.matches.len());
+        (
+            log_file.index.len() * size_of::<usize>()
+                + log_file.filter.len() * size_of::<bool>()
+                + search_matches * size_of::<crate::SearchMatch>(),
+            log_file.mmap.len(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_retention_index_entries_for_test(&self, entries: usize) {
+        self.log_file.write().unwrap().index.resize(entries, 0);
     }
 
     pub fn apply_search(&mut self, query: String, origin_line: usize) -> io::Result<()> {
