@@ -343,8 +343,11 @@ impl LogRegistry {
     }
 
     fn retain_idle_readers(&self, excluded_uuid: Uuid) {
+        self.retain_idle_readers_at(excluded_uuid, Instant::now());
+    }
+
+    fn retain_idle_readers_at(&self, excluded_uuid: Uuid, now: Instant) {
         let before = self.retention_usage();
-        let now = Instant::now();
         let ttl_candidates = self.idle_entries_by_last_access();
         let ttl_removed = ttl_candidates
             .into_iter()
@@ -856,12 +859,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let first_path = directory.path().join("first.log");
         let second_path = directory.path().join("second.log");
-        let third_path = directory.path().join("third.log");
-        let fourth_path = directory.path().join("fourth.log");
         std::fs::write(&first_path, "first\n").unwrap();
         std::fs::write(&second_path, "second\n").unwrap();
-        std::fs::write(&third_path, "third\n").unwrap();
-        std::fs::write(&fourth_path, "fourth\n").unwrap();
         let registry = LogRegistry::builder()
             .retention_policy(RetentionPolicy {
                 idle_ttl: Duration::MAX,
@@ -878,24 +877,21 @@ mod tests {
             .unwrap();
         registry.set_retention_index_entries_for_test(&first_id, 4);
         registry.set_retention_index_entries_for_test(&second_id, 4);
-        registry
-            .set_last_access_for_test(&first_id, Instant::now() - Duration::from_secs(10 * 60 - 1));
+        let last_access = Instant::now();
+        registry.set_last_access_for_test(&first_id, last_access);
+        registry.set_last_access_for_test(&second_id, last_access + Duration::from_secs(1));
 
-        registry
-            .open_ephemeral_file(third_path.to_str().unwrap())
-            .unwrap();
+        registry.retain_idle_readers_at(
+            Uuid::new_v4(),
+            last_access + Duration::from_secs(10 * 60 - 1),
+        );
 
-        assert!(matches!(
-            registry.with_reader(&first_id, |_| ()),
-            Ok(Some(()))
-        ));
-        registry.set_last_access_for_test(&first_id, Instant::now() - Duration::from_secs(10 * 60));
+        let first_uuid = Uuid::parse_str(&first_id).unwrap();
+        assert!(registry.reader_entry_for_test(first_uuid).is_some());
 
-        registry
-            .open_ephemeral_file(fourth_path.to_str().unwrap())
-            .unwrap();
+        registry.retain_idle_readers_at(Uuid::new_v4(), last_access + Duration::from_secs(10 * 60));
 
-        assert!(matches!(registry.with_reader(&first_id, |_| ()), Ok(None)));
+        assert!(registry.reader_entry_for_test(first_uuid).is_none());
     }
 
     #[cfg(feature = "native-persistence")]
