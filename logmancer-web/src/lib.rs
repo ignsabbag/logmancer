@@ -5,6 +5,8 @@ pub mod app;
 pub(crate) mod browser_api_client;
 pub mod components;
 pub mod file_opening;
+#[cfg(feature = "ssr")]
+pub mod site_root;
 mod visual_rules_state;
 
 #[cfg(feature = "ssr")]
@@ -220,13 +222,23 @@ pub async fn start_leptos_with_registry(
     addr: std::net::SocketAddr,
     registry: std::sync::Arc<logmancer_core::LogRegistry>,
 ) {
-    start_leptos_with_registry_inner(addr, registry).await;
+    start_leptos_with_registry_at_site_root(addr, registry, None).await;
+}
+
+#[cfg(feature = "ssr")]
+pub async fn start_leptos_with_registry_at_site_root(
+    addr: std::net::SocketAddr,
+    registry: std::sync::Arc<logmancer_core::LogRegistry>,
+    desktop_site_root: Option<std::path::PathBuf>,
+) {
+    start_leptos_with_registry_inner(addr, registry, desktop_site_root).await;
 }
 
 #[cfg(feature = "ssr")]
 async fn start_leptos_with_registry_inner(
     addr: std::net::SocketAddr,
     registry: std::sync::Arc<logmancer_core::LogRegistry>,
+    desktop_site_root: Option<std::path::PathBuf>,
 ) {
     use crate::api::config::api_routes_with_registry;
     use crate::app::shell;
@@ -239,11 +251,24 @@ async fn start_leptos_with_registry_inner(
     init_backend_logging();
 
     let conf = get_configuration(None).unwrap();
-    let leptos_options = conf.leptos_options;
+    let mut leptos_options = conf.leptos_options;
+    let resolved_site_root = site_root::resolve_site_root(
+        std::env::var_os("LEPTOS_SITE_ROOT"),
+        desktop_site_root,
+        std::env::current_exe().ok().as_deref(),
+        std::path::PathBuf::from(leptos_options.site_root.as_ref()),
+    );
+    leptos_options.site_root = resolved_site_root
+        .path
+        .to_string_lossy()
+        .into_owned()
+        .into();
     info!(
-        "Resolved Leptos runtime config LEPTOS_SITE_ROOT={:?} LEPTOS_OUTPUT_NAME={:?}",
-        std::env::var("LEPTOS_SITE_ROOT").ok(),
-        std::env::var("LEPTOS_OUTPUT_NAME").ok()
+        site_root = %resolved_site_root.path.display(),
+        site_root_source = %resolved_site_root.source,
+        configured_site_root = ?std::env::var("LEPTOS_SITE_ROOT").ok(),
+        output_name = ?std::env::var("LEPTOS_OUTPUT_NAME").ok(),
+        "Resolved Leptos runtime site root"
     );
     // Generate the list of routes in your Leptos App
     let routes = generate_route_list(App);
