@@ -80,10 +80,10 @@ Logmancer is structured as a multi-crate workspace:
    ```
 
 4. Build the desktop module:
-   ```sh
-   export LEPTOS_OUTPUT_NAME=logmancer-web
-   cargo tauri build --no-bundle
-   ```
+    ```sh
+    export LEPTOS_OUTPUT_NAME=logmancer-web
+    cargo tauri build --config logmancer-desktop/tauri.bundle.conf.json
+    ```
 
 ---
 

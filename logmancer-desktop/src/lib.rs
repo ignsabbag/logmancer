@@ -17,10 +17,10 @@ use tracing::{info, warn};
 #[cfg(feature = "embedded-server")]
 use {
     logmancer_web::{
-        file_opening::enable_desktop_ssr_runtime, registry_runtime, start_leptos_with_registry,
-        try_open_initial_file,
+        file_opening::enable_desktop_ssr_runtime, registry_runtime, site_root::is_valid_site_root,
+        start_leptos_with_registry_at_site_root, try_open_initial_file,
     },
-    tauri::WindowEvent,
+    tauri::{WindowEvent, path::BaseDirectory},
 };
 
 #[cfg(not(feature = "embedded-server"))]
@@ -65,6 +65,18 @@ where
 #[cfg(any(feature = "embedded-server", test))]
 fn embedded_server_bind_addr() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 0))
+}
+
+#[cfg(feature = "embedded-server")]
+fn resolve_desktop_site_root<E>(
+    resolve_resource: impl FnOnce(&str) -> Result<PathBuf, E>,
+) -> Result<Option<PathBuf>, E> {
+    resolve_resource("site").map(|site_root| is_valid_site_root(&site_root).then_some(site_root))
+}
+
+#[cfg(feature = "embedded-server")]
+fn desktop_site_root(app: &tauri::AppHandle) -> Result<Option<PathBuf>, tauri::Error> {
+    resolve_desktop_site_root(|resource| app.path().resolve(resource, BaseDirectory::Resource))
 }
 
 #[cfg(not(feature = "embedded-server"))]
@@ -196,6 +208,70 @@ mod tests {
     use std::net::TcpListener;
     use std::thread::sleep;
     use std::time::Duration;
+
+    #[test]
+    fn desktop_site_root_uses_the_packaged_site_resource() {
+        let resource_directory = tempfile::tempdir().unwrap();
+        let site_root = resource_directory.path().join("site");
+        std::fs::create_dir(&site_root).unwrap();
+        std::fs::write(site_root.join("index.html"), "").unwrap();
+        std::fs::create_dir(site_root.join("pkg")).unwrap();
+
+        let site_root = resolve_desktop_site_root(|resource| {
+            assert_eq!(resource, "site");
+            Ok::<_, ()>(site_root)
+        })
+        .unwrap();
+
+        assert_eq!(site_root, Some(resource_directory.path().join("site")));
+    }
+
+    #[test]
+    fn absent_desktop_site_resource_falls_back_to_web_resolution() {
+        let resource_directory = tempfile::tempdir().unwrap();
+        let fallback_site_root = resource_directory.path().join("target/site");
+        std::fs::create_dir_all(&fallback_site_root).unwrap();
+
+        let desktop_site_root =
+            resolve_desktop_site_root(|_| Ok::<_, ()>(resource_directory.path().join("site")))
+                .unwrap();
+        let resolved = logmancer_web::site_root::resolve_site_root(
+            None,
+            desktop_site_root,
+            None,
+            fallback_site_root.clone(),
+        );
+
+        assert_eq!(resolved.path, fallback_site_root);
+        assert_eq!(
+            resolved.source,
+            logmancer_web::site_root::SiteRootSource::Development
+        );
+    }
+
+    #[test]
+    fn incomplete_desktop_site_resource_falls_back_to_web_resolution() {
+        let resource_directory = tempfile::tempdir().unwrap();
+        let site_root = resource_directory.path().join("site");
+        std::fs::create_dir(&site_root).unwrap();
+        std::fs::write(site_root.join("index.html"), "").unwrap();
+        let fallback_site_root = resource_directory.path().join("target/site");
+        std::fs::create_dir_all(&fallback_site_root).unwrap();
+
+        let desktop_site_root = resolve_desktop_site_root(|_| Ok::<_, ()>(site_root)).unwrap();
+        let resolved = logmancer_web::site_root::resolve_site_root(
+            None,
+            desktop_site_root,
+            None,
+            fallback_site_root.clone(),
+        );
+
+        assert_eq!(resolved.path, fallback_site_root);
+        assert_eq!(
+            resolved.source,
+            logmancer_web::site_root::SiteRootSource::Development
+        );
+    }
 
     #[test]
     fn config_directory_resolution_failure_writes_nowhere() {
@@ -386,6 +462,7 @@ pub fn run() {
         let state = app.state::<DesktopState>();
         let config_directory =
             config_directory(app.path().app_config_dir().ok()).map_err(std::io::Error::other)?;
+        let site_root = desktop_site_root(app.handle()).map_err(std::io::Error::other)?;
         let registry = registry_runtime(config_directory, None);
         *state.registry.write().expect("desktop registry lock") = registry.clone();
         let initial_file_id = try_open_initial_file(&registry, initial_path.as_deref());
@@ -397,7 +474,7 @@ pub fn run() {
         info!("Spawning embedded SSR server on port={}", port);
         tauri::async_runtime::spawn(async move {
             info!("Embedded SSR server task started");
-            start_leptos_with_registry(addr, registry).await
+            start_leptos_with_registry_at_site_root(addr, registry, site_root).await
         });
         wait_for_embedded_server(port);
         let window = app.get_webview_window("main").unwrap();
