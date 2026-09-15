@@ -2978,6 +2978,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "logmancer-launcher"
+version = "0.4.1"
+dependencies = [
+ "libc",
+ "tempfile",
+]
+
+[[package]]
 name = "logmancer-tui"
 version = "0.4.1"
 dependencies = [

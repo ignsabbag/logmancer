@@ -12,4 +12,4 @@ export LEPTOS_SITE_ROOT="$SCRIPT_DIR/site"
 mkdir -p "$SCRIPT_DIR/logs"
 export LOGMANCER_LOG_FILE="$SCRIPT_DIR/logs/logmancer-web.log"
 
-exec "$SCRIPT_DIR/logmancer-web" "$@"
+exec "$SCRIPT_DIR/logmancer" web "$@"

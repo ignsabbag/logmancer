@@ -7,4 +7,4 @@ rem Exposes the standalone web server on all network interfaces at port 3000.
 rem set "LOGMANCER_BIND_ADDR=0.0.0.0:3000"
 if not exist "%~dp0logs" mkdir "%~dp0logs"
 set LOGMANCER_LOG_FILE=%~dp0logs\logmancer-web.log
-"%~dp0logmancer-web.exe" %*
+"%~dp0logmancer.exe" web %*

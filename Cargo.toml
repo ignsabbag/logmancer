@@ -4,7 +4,8 @@ members = [
     "logmancer-tui",
     "logmancer-core",
     "logmancer-web",
-    "logmancer-desktop"
+    "logmancer-desktop",
+    "logmancer-launcher"
 ]
 
 # Keep local builds and tests debuggable without retaining full dependency symbols.

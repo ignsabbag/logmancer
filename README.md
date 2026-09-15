@@ -52,6 +52,7 @@ Logmancer is structured as a multi-crate workspace:
 * **logmancer-tui**: Terminal UI application.
 * **logmancer-web**: Web application using Leptos and Axum.
 * **logmancer-desktop**: Desktop application leveraging the web module via Tauri.
+* **logmancer-launcher**: Public command that selects and starts a separately packaged frontend.
 
 ---
 
@@ -88,6 +89,22 @@ Logmancer is structured as a multi-crate workspace:
 ---
 
 ## Usage
+
+### logmancer
+
+The public launcher starts Desktop by default on Windows. On Linux, it starts
+Desktop in a graphical session and starts TUI for a file when no display is
+available but the terminal is interactive. Web is always explicit:
+
+```sh
+logmancer /path/to/your/logfile.log
+logmancer desktop /path/to/your/logfile.log
+logmancer web [options]
+logmancer tui /path/to/your/logfile.log
+```
+
+The variant executables (`logmancer-desktop`, `logmancer-web`, and
+`logmancer-tui`) remain available for direct use.
 
 ### logmancer-tui
 

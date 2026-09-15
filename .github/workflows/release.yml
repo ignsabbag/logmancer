@@ -91,6 +91,7 @@ jobs:
           archive_name="logmancer-${LOGMANCER_VERSION}-${{ matrix.package_name }}-portable.zip"
 
           mkdir -p "$package_root"
+          cp "$target_dir/logmancer" "$package_root/"
           cp "$target_dir/logmancer-web" "$package_root/"
           cp "$target_dir/logmancer-desktop" "$package_root/"
           cp "$target_dir/logmancer-tui" "$package_root/"
@@ -111,6 +112,7 @@ jobs:
           $archiveName = "logmancer-${env:LOGMANCER_VERSION}-${{ matrix.package_name }}-portable.zip"
 
           New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+          Copy-Item "$targetDir/logmancer.exe" "$packageRoot/"
           Copy-Item "$targetDir/logmancer-web.exe" "$packageRoot/"
           Copy-Item "$targetDir/logmancer-desktop.exe" "$packageRoot/"
           Copy-Item "$targetDir/logmancer-tui.exe" "$packageRoot/"

@@ -95,6 +95,7 @@ jobs:
           package_root="dist/logmancer-${{ matrix.package_name }}"
 
           mkdir -p "$package_root"
+          cp "$target_dir/logmancer" "$package_root/"
           cp "$target_dir/logmancer-web" "$package_root/"
           cp "$target_dir/logmancer-desktop" "$package_root/"
           cp "$target_dir/logmancer-tui" "$package_root/"
@@ -113,6 +114,7 @@ jobs:
           $packageRoot = "dist/logmancer-${{ matrix.package_name }}"
 
           New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+          Copy-Item "$targetDir/logmancer.exe" "$packageRoot/"
           Copy-Item "$targetDir/logmancer-web.exe" "$packageRoot/"
           Copy-Item "$targetDir/logmancer-desktop.exe" "$packageRoot/"
           Copy-Item "$targetDir/logmancer-tui.exe" "$packageRoot/"
