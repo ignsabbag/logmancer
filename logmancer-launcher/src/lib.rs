@@ -194,9 +194,37 @@ pub fn launch(
     let mut command = Command::new(&executable);
     command.args(request.arguments);
     apply_leptos_defaults(&mut command, request.variant, directory);
+    #[cfg(windows)]
+    if platform == Platform::Windows && request.variant == Variant::Desktop {
+        detach_owned_console();
+    }
     command
         .status()
         .map_err(|source| LauncherError::Start { executable, source })
+}
+
+#[cfg(any(windows, test))]
+fn should_detach_console(console_processes: &[u32], launcher_process_id: u32) -> bool {
+    console_processes == [launcher_process_id]
+}
+
+#[cfg(windows)]
+fn detach_owned_console() {
+    use windows_sys::Win32::System::Console::{FreeConsole, GetConsoleProcessList};
+
+    let mut console_processes = [0];
+    let process_count = unsafe {
+        GetConsoleProcessList(
+            console_processes.as_mut_ptr(),
+            console_processes.len() as u32,
+        )
+    };
+
+    if process_count == console_processes.len() as u32
+        && should_detach_console(&console_processes, std::process::id())
+    {
+        unsafe { FreeConsole() };
+    }
 }
 
 fn apply_leptos_defaults(command: &mut Command, variant: Variant, directory: &Path) {
@@ -318,6 +346,14 @@ mod tests {
             parse_request(&args(&["tui"]), Platform::Linux, GRAPHICAL),
             Err(LauncherError::Usage(_))
         ));
+    }
+
+    #[test]
+    fn console_detachment_requires_the_launcher_to_be_the_only_console_process() {
+        assert!(should_detach_console(&[42], 42));
+        assert!(!should_detach_console(&[], 42));
+        assert!(!should_detach_console(&[7], 42));
+        assert!(!should_detach_console(&[42, 7], 42));
     }
 
     #[test]
