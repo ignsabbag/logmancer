@@ -191,10 +191,35 @@ pub fn launch(
     platform: Platform,
 ) -> Result<ExitStatus, LauncherError> {
     let executable = resolve_sibling_executable(directory, request.variant, platform)?;
-    Command::new(&executable)
-        .args(request.arguments)
+    let mut command = Command::new(&executable);
+    command.args(request.arguments);
+    apply_leptos_defaults(&mut command, request.variant, directory);
+    command
         .status()
         .map_err(|source| LauncherError::Start { executable, source })
+}
+
+fn apply_leptos_defaults(command: &mut Command, variant: Variant, directory: &Path) {
+    if variant == Variant::Tui {
+        return;
+    }
+
+    if env::var_os("LEPTOS_OUTPUT_NAME").is_none_or(|value| value.is_empty()) {
+        command.env("LEPTOS_OUTPUT_NAME", "logmancer-web");
+    }
+
+    if env::var_os("LEPTOS_SITE_ROOT").is_none_or(|value| value.is_empty()) {
+        let site_root = directory.join("site");
+        if is_valid_site_root(&site_root)
+            && let Ok(site_root) = site_root.canonicalize()
+        {
+            command.env("LEPTOS_SITE_ROOT", site_root);
+        }
+    }
+}
+
+fn is_valid_site_root(site_root: &Path) -> bool {
+    site_root.join("index.html").is_file() && site_root.join("pkg").is_dir()
 }
 
 pub fn run_from_env() -> Result<(), LauncherError> {

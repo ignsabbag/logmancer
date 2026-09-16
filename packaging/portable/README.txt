@@ -17,5 +17,6 @@ Examples:
 - Windows TUI: logmancer.exe tui C:\path\to\logfile.log
 - Direct Windows TUI: logmancer-tui.exe C:\path\to\logfile.log
 
-The legacy run-desktop and run-web launchers remain available and set the Leptos runtime environment to use the bundled site/ directory.
+The launcher and legacy run-desktop/run-web wrappers use the bundled site/ directory when no LEPTOS runtime override is set.
+For Web, use --bind <socket-address> and --file-root <path>; CLI values override LOGMANCER_BIND_ADDR and LOGMANCER_SERVER_FILE_ROOT, which override safe defaults.
 Runtime logs are written to the logs/ directory next to the launchers.

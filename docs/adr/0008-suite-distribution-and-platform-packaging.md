@@ -25,9 +25,10 @@ requires a graphical session because the TUI currently requires a file.
 
 The generated Leptos `site/` directory is installed as an application resource.
 Desktop resolves that resource through Tauri, while standalone Web resolves its
-installed assets relative to its own executable. The launcher does not override
-that runtime ownership. Existing environment variables remain explicit
-overrides for portable and development use.
+installed assets relative to its own executable. The launcher supplies matching
+Leptos defaults only when the values are unset or empty and a valid sibling
+`site/` exists. Existing environment variables remain explicit overrides for
+portable and development use.
 
 ## Context
 
@@ -61,6 +62,7 @@ runtime concerns, particularly on Windows where Desktop suppresses the console.
 | Linux layout | Install the suite under `/usr/lib/logmancer` and expose the launcher and variant executables through `/usr/bin`. |
 | Web startup | Start manually and bind to loopback by default. |
 | File exposure | Keep `LOGMANCER_SERVER_FILE_ROOT` optional and explicitly configured. |
+| Web configuration | Apply `--bind`/`--file-root`, then environment variables, then safe defaults; do not apply standalone Web options to Desktop. |
 | Web assets | Install generated `site/` assets as a resource and resolve their installed path at runtime. |
 | Portable releases | Retain portable ZIP archives during the transition. |
 | Arch Linux | Prepare a source-built `logmancer` AUR `PKGBUILD` after the installed layout is stable. |
@@ -71,6 +73,7 @@ runtime concerns, particularly on Windows where Desktop suppresses the console.
   to the portable ZIP archives.
 - Installed Desktop and Web startup must not rely on a caller to set
   `LEPTOS_SITE_ROOT`.
+- Launcher defaults must not replace explicit Leptos environment overrides.
 - The launcher is a user-facing command contract and needs argument, error, and
   platform-specific integration tests.
 - Linux default-selection tests must cover graphical, non-graphical interactive,

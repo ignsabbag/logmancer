@@ -5,6 +5,7 @@ rem Restricts server-side file browsing to the user's home directory; prefer a n
 rem set "LOGMANCER_SERVER_FILE_ROOT=%USERPROFILE%"
 rem Exposes the standalone web server on all network interfaces at port 3000.
 rem set "LOGMANCER_BIND_ADDR=0.0.0.0:3000"
+rem Equivalent CLI options: --file-root <path> and --bind <socket-address>.
 if not exist "%~dp0logs" mkdir "%~dp0logs"
 set LOGMANCER_LOG_FILE=%~dp0logs\logmancer-web.log
 "%~dp0logmancer.exe" web %*

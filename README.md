@@ -120,13 +120,19 @@ Run the development web server with Leptos:
 cargo leptos watch --project logmancer-web
 ```
 
-The web server listens on `127.0.0.1:3000` by default. To intentionally expose it on another interface or port, set `LOGMANCER_BIND_ADDR` to a full socket address:
+The web server listens on `127.0.0.1:3000` by default. Configure its bind address and optional authorized file root with CLI options:
+
+```sh
+logmancer web --bind 0.0.0.0:8080 --file-root "/srv/log files"
+```
+
+For Docker, systemd, and CI, the equivalent environment variables remain supported:
 
 ```sh
 LOGMANCER_BIND_ADDR=0.0.0.0:8080 cargo leptos watch --project logmancer-web
 ```
 
-This setting applies only to the standalone web server. Desktop always uses loopback; its embedded server selects a loopback port automatically and its development mode connects to `localhost:3000`. When exposing the web server, set `LOGMANCER_SERVER_FILE_ROOT` to limit the server-side files it can open.
+CLI options take precedence over `LOGMANCER_BIND_ADDR` and `LOGMANCER_SERVER_FILE_ROOT`, which take precedence over safe defaults. This applies only to the standalone web server. Desktop always uses loopback; its embedded server selects a loopback port automatically and its development mode connects to `localhost:3000`. Without a file root, the web server does not authorize arbitrary server files.
 
 ### logmancer-desktop
 
@@ -154,6 +160,8 @@ No additional configuration is required. The web server supports these optional 
 
 * `LOGMANCER_BIND_ADDR`: Full bind address for the standalone web server, such as `0.0.0.0:8080`. Defaults to `127.0.0.1:3000`.
 * `LOGMANCER_SERVER_FILE_ROOT`: Directory containing files that the web server may open.
+
+The launcher supplies its bundled Leptos assets to Desktop and Web only when `LEPTOS_OUTPUT_NAME` and `LEPTOS_SITE_ROOT` are unset or empty. Explicit values remain unchanged; TUI receives no Leptos runtime defaults.
 
 ---
 
