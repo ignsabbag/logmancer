@@ -9,7 +9,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 ### Changed
 
 - Logmancer now ships a public `logmancer` launcher that defaults to Desktop on Windows and selects Desktop or TUI from the current Linux session; Web and all explicit variant commands remain available.
-- When launched from Explorer, the Windows Desktop launcher now closes its own console before starting Desktop; terminals used to launch Logmancer remain attached.
+- When launched from Explorer, the Windows Desktop launcher now starts Desktop before closing its own console, preserving startup errors while terminals used to launch Logmancer remain attached.
 - The launcher now supplies bundled Leptos runtime defaults to Desktop and Web without replacing explicit overrides. Standalone Web accepts `--bind` and `--file-root`, with CLI values taking precedence over environment variables.
 - Installed Desktop and standalone Web now resolve their generated `site/` assets without requiring `LEPTOS_SITE_ROOT`; explicit environment configuration remains an override, and Desktop bundle assets are generated only during packaging.
 - Packaged Desktop and Web now accept complete SSR asset trees without a static `index.html`, and runtime logs identify each resolved parameter's source without logging its value.

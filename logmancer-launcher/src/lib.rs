@@ -196,11 +196,22 @@ pub fn launch(
     apply_leptos_defaults(&mut command, request.variant, directory);
     #[cfg(windows)]
     if platform == Platform::Windows && request.variant == Variant::Desktop {
-        detach_owned_console();
+        return spawn_then_detach_and_wait(&mut command, detach_owned_console)
+            .map_err(|source| LauncherError::Start { executable, source });
     }
     command
         .status()
         .map_err(|source| LauncherError::Start { executable, source })
+}
+
+#[cfg(any(windows, test))]
+fn spawn_then_detach_and_wait<F>(command: &mut Command, detach_console: F) -> io::Result<ExitStatus>
+where
+    F: FnOnce(),
+{
+    let mut child = command.spawn()?;
+    detach_console();
+    child.wait()
 }
 
 #[cfg(any(windows, test))]
@@ -354,6 +365,43 @@ mod tests {
         assert!(!should_detach_console(&[], 42));
         assert!(!should_detach_console(&[7], 42));
         assert!(!should_detach_console(&[42, 7], 42));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn desktop_console_detaches_only_after_the_child_starts() {
+        use std::sync::{Arc, Mutex};
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let detach_events = Arc::clone(&events);
+        let mut command = Command::new("sh");
+        command.arg("-c").arg("exit 0");
+
+        let status = spawn_then_detach_and_wait(&mut command, move || {
+            detach_events.lock().unwrap().push("detached");
+        })
+        .unwrap();
+
+        assert!(status.success());
+        assert_eq!(*events.lock().unwrap(), ["detached"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn failed_desktop_child_start_does_not_detach_the_console() {
+        use std::sync::{Arc, Mutex};
+
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let detach_events = Arc::clone(&events);
+        let mut command = Command::new("/definitely/missing/logmancer-desktop");
+
+        assert!(
+            spawn_then_detach_and_wait(&mut command, move || {
+                detach_events.lock().unwrap().push("detached");
+            })
+            .is_err()
+        );
+        assert!(events.lock().unwrap().is_empty());
     }
 
     #[test]
