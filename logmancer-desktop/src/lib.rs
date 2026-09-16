@@ -214,8 +214,11 @@ mod tests {
         let resource_directory = tempfile::tempdir().unwrap();
         let site_root = resource_directory.path().join("site");
         std::fs::create_dir(&site_root).unwrap();
-        std::fs::write(site_root.join("index.html"), "").unwrap();
-        std::fs::create_dir(site_root.join("pkg")).unwrap();
+        let package_directory = site_root.join("pkg");
+        std::fs::create_dir(&package_directory).unwrap();
+        std::fs::write(package_directory.join("logmancer-web.css"), "").unwrap();
+        std::fs::write(package_directory.join("logmancer-web.js"), "").unwrap();
+        std::fs::write(package_directory.join("logmancer-web.wasm"), "").unwrap();
 
         let site_root = resolve_desktop_site_root(|resource| {
             assert_eq!(resource, "site");
@@ -254,7 +257,10 @@ mod tests {
         let resource_directory = tempfile::tempdir().unwrap();
         let site_root = resource_directory.path().join("site");
         std::fs::create_dir(&site_root).unwrap();
-        std::fs::write(site_root.join("index.html"), "").unwrap();
+        let package_directory = site_root.join("pkg");
+        std::fs::create_dir(&package_directory).unwrap();
+        std::fs::write(package_directory.join("logmancer-web.css"), "").unwrap();
+        std::fs::write(package_directory.join("logmancer-web.js"), "").unwrap();
         let fallback_site_root = resource_directory.path().join("target/site");
         std::fs::create_dir_all(&fallback_site_root).unwrap();
 

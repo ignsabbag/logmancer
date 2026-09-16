@@ -25,10 +25,14 @@ requires a graphical session because the TUI currently requires a file.
 
 The generated Leptos `site/` directory is installed as an application resource.
 Desktop resolves that resource through Tauri, while standalone Web resolves its
-installed assets relative to its own executable. The launcher supplies matching
-Leptos defaults only when the values are unset or empty and a valid sibling
-`site/` exists. Existing environment variables remain explicit overrides for
-portable and development use.
+installed assets relative to its own executable. A valid resource contains the
+generated `pkg/logmancer-web.css`, `pkg/logmancer-web.js`, and
+`pkg/logmancer-web.wasm` artifacts; SSR generates HTML dynamically and does not
+require `site/index.html`. The launcher supplies matching Leptos defaults only
+when the values are unset or empty and a valid sibling `site/` exists. Existing
+environment variables remain explicit overrides for portable and development
+use. Runtime logs identify the source of resolved parameters without recording
+their values.
 
 ## Context
 
@@ -63,7 +67,8 @@ runtime concerns, particularly on Windows where Desktop suppresses the console.
 | Web startup | Start manually and bind to loopback by default. |
 | File exposure | Keep `LOGMANCER_SERVER_FILE_ROOT` optional and explicitly configured. |
 | Web configuration | Apply `--bind`/`--file-root`, then environment variables, then safe defaults; do not apply standalone Web options to Desktop. |
-| Web assets | Install generated `site/` assets as a resource and resolve their installed path at runtime. |
+| Web assets | Install generated SSR `site/pkg/logmancer-web.{css,js,wasm}` assets as a resource and resolve their installed path at runtime. |
+| Runtime configuration logging | Log whether each runtime parameter came from CLI, environment, installed resources, or a default without logging values. |
 | Portable releases | Retain portable ZIP archives during the transition. |
 | Arch Linux | Prepare a source-built `logmancer` AUR `PKGBUILD` after the installed layout is stable. |
 

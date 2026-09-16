@@ -2,9 +2,12 @@ use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use crate::runtime_parameter::RuntimeParameterSource;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SiteRootSource {
     Environment,
+    LauncherInstalledResource,
     DesktopResource,
     Development,
     Installed,
@@ -15,6 +18,7 @@ impl fmt::Display for SiteRootSource {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         let source = match self {
             Self::Environment => "environment",
+            Self::LauncherInstalledResource => "installed_resource",
             Self::DesktopResource => "desktop_resource",
             Self::Development => "development",
             Self::Installed => "installed",
@@ -32,7 +36,10 @@ pub struct ResolvedSiteRoot {
 }
 
 pub fn is_valid_site_root(site_root: &Path) -> bool {
-    site_root.join("index.html").is_file() && site_root.join("pkg").is_dir()
+    let package_directory = site_root.join("pkg");
+    package_directory.join("logmancer-web.css").is_file()
+        && package_directory.join("logmancer-web.js").is_file()
+        && package_directory.join("logmancer-web.wasm").is_file()
 }
 
 pub fn resolve_site_root(
@@ -41,10 +48,33 @@ pub fn resolve_site_root(
     executable: Option<&Path>,
     fallback_site_root: PathBuf,
 ) -> ResolvedSiteRoot {
+    resolve_site_root_with_parameter_source(
+        configured_site_root,
+        RuntimeParameterSource::Environment,
+        desktop_site_root,
+        executable,
+        fallback_site_root,
+    )
+}
+
+pub fn resolve_site_root_with_parameter_source(
+    configured_site_root: Option<OsString>,
+    configured_site_root_source: RuntimeParameterSource,
+    desktop_site_root: Option<PathBuf>,
+    executable: Option<&Path>,
+    fallback_site_root: PathBuf,
+) -> ResolvedSiteRoot {
     if let Some(site_root) = configured_site_root.filter(|path| !path.is_empty()) {
         return ResolvedSiteRoot {
             path: PathBuf::from(site_root),
-            source: SiteRootSource::Environment,
+            source: match configured_site_root_source {
+                RuntimeParameterSource::InstalledResource => {
+                    SiteRootSource::LauncherInstalledResource
+                }
+                RuntimeParameterSource::Environment | RuntimeParameterSource::Default => {
+                    SiteRootSource::Environment
+                }
+            },
         };
     }
 
@@ -130,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn installed_standalone_layout_requires_index_and_pkg_directories() {
+    fn installed_standalone_layout_accepts_ssr_artifacts_without_index_html() {
         let distribution = tempfile::tempdir().unwrap();
         let executable = distribution.path().join("logmancer-web");
         let installed_site_root = distribution.path().join("site");
@@ -142,13 +172,33 @@ mod tests {
         assert_eq!(resolved.path, fallback_site_root);
         assert_eq!(resolved.source, SiteRootSource::Fallback);
 
-        std::fs::write(installed_site_root.join("index.html"), "").unwrap();
-        std::fs::create_dir(installed_site_root.join("pkg")).unwrap();
+        let package_directory = installed_site_root.join("pkg");
+        std::fs::create_dir(&package_directory).unwrap();
+        std::fs::write(package_directory.join("logmancer-web.css"), "").unwrap();
+        std::fs::write(package_directory.join("logmancer-web.js"), "").unwrap();
+        std::fs::write(package_directory.join("logmancer-web.wasm"), "").unwrap();
 
         let resolved = resolve_site_root(None, None, Some(&executable), fallback_site_root);
 
         assert_eq!(resolved.path, installed_site_root);
         assert_eq!(resolved.source, SiteRootSource::Installed);
+    }
+
+    #[test]
+    fn installed_standalone_layout_rejects_incomplete_ssr_artifacts() {
+        let distribution = tempfile::tempdir().unwrap();
+        let executable = distribution.path().join("logmancer-web");
+        let installed_site_root = distribution.path().join("site");
+        let package_directory = installed_site_root.join("pkg");
+        std::fs::create_dir_all(&package_directory).unwrap();
+        std::fs::write(package_directory.join("logmancer-web.css"), "").unwrap();
+        std::fs::write(package_directory.join("logmancer-web.js"), "").unwrap();
+        let fallback_site_root = distribution.path().join("target/site");
+
+        let resolved = resolve_site_root(None, None, Some(&executable), fallback_site_root.clone());
+
+        assert_eq!(resolved.path, fallback_site_root);
+        assert_eq!(resolved.source, SiteRootSource::Fallback);
     }
 
     #[test]

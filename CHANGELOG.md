@@ -11,6 +11,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Logmancer now ships a public `logmancer` launcher that defaults to Desktop on Windows and selects Desktop or TUI from the current Linux session; Web and all explicit variant commands remain available.
 - The launcher now supplies bundled Leptos runtime defaults to Desktop and Web without replacing explicit overrides. Standalone Web accepts `--bind` and `--file-root`, with CLI values taking precedence over environment variables.
 - Installed Desktop and standalone Web now resolve their generated `site/` assets without requiring `LEPTOS_SITE_ROOT`; explicit environment configuration remains an override, and Desktop bundle assets are generated only during packaging.
+- Packaged Desktop and Web now accept complete SSR asset trees without a static `index.html`, and runtime logs identify each resolved parameter's source without logging its value.
 - The core registry can now remove inactive readers after their active operations finish, releasing their workers, memory map, indexes, filter state, and search state.
 - Persisted reader restoration now reports actionable missing and authorization failures instead of treating them as unopened files.
 - The core registry now retains idle readers on file open using a 30-minute TTL and a soft 256 MiB index budget, while transparently restoring evicted persisted readers on access.

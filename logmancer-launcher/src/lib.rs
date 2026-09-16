@@ -204,8 +204,15 @@ fn apply_leptos_defaults(command: &mut Command, variant: Variant, directory: &Pa
         return;
     }
 
+    command.env_remove("LOGMANCER_LEPTOS_OUTPUT_NAME_SOURCE");
+    command.env_remove("LOGMANCER_LEPTOS_SITE_ROOT_SOURCE");
+
     if env::var_os("LEPTOS_OUTPUT_NAME").is_none_or(|value| value.is_empty()) {
         command.env("LEPTOS_OUTPUT_NAME", "logmancer-web");
+        command.env("LOGMANCER_LEPTOS_OUTPUT_NAME_SOURCE", "default");
+        eprintln!("Resolved LEPTOS_OUTPUT_NAME from default");
+    } else {
+        eprintln!("Resolved LEPTOS_OUTPUT_NAME from environment");
     }
 
     if env::var_os("LEPTOS_SITE_ROOT").is_none_or(|value| value.is_empty()) {
@@ -214,12 +221,21 @@ fn apply_leptos_defaults(command: &mut Command, variant: Variant, directory: &Pa
             && let Ok(site_root) = site_root.canonicalize()
         {
             command.env("LEPTOS_SITE_ROOT", site_root);
+            command.env("LOGMANCER_LEPTOS_SITE_ROOT_SOURCE", "installed_resource");
+            eprintln!("Resolved LEPTOS_SITE_ROOT from installed resource");
+        } else {
+            eprintln!("Resolved LEPTOS_SITE_ROOT from default");
         }
+    } else {
+        eprintln!("Resolved LEPTOS_SITE_ROOT from environment");
     }
 }
 
 fn is_valid_site_root(site_root: &Path) -> bool {
-    site_root.join("index.html").is_file() && site_root.join("pkg").is_dir()
+    let package_directory = site_root.join("pkg");
+    package_directory.join("logmancer-web.css").is_file()
+        && package_directory.join("logmancer-web.js").is_file()
+        && package_directory.join("logmancer-web.wasm").is_file()
 }
 
 pub fn run_from_env() -> Result<(), LauncherError> {

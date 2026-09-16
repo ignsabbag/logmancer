@@ -20,6 +20,14 @@ fn web_fixture(directory: &Path, script: &str) {
     fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
+fn ssr_site_fixture(directory: &Path) {
+    let package_directory = directory.join("site/pkg");
+    fs::create_dir_all(&package_directory).unwrap();
+    fs::write(package_directory.join("logmancer-web.css"), "").unwrap();
+    fs::write(package_directory.join("logmancer-web.js"), "").unwrap();
+    fs::write(package_directory.join("logmancer-web.wasm"), "").unwrap();
+}
+
 #[test]
 fn public_launcher_propagates_nonzero_exit_codes() {
     let _lock = LAUNCHER_TEST_LOCK.lock().unwrap();
@@ -54,9 +62,7 @@ fn public_launcher_supplies_leptos_defaults_without_overriding_user_values() {
     let suite_directory = directory.path().join("suite with spaces");
     fs::create_dir(&suite_directory).unwrap();
     let launcher = portable_launcher(&suite_directory);
-    fs::create_dir(suite_directory.join("site")).unwrap();
-    fs::write(suite_directory.join("site/index.html"), "").unwrap();
-    fs::create_dir(suite_directory.join("site/pkg")).unwrap();
+    ssr_site_fixture(&suite_directory);
     web_fixture(
         &suite_directory,
         "#!/bin/sh\nprintf '%s|%s' \"$LEPTOS_OUTPUT_NAME\" \"$LEPTOS_SITE_ROOT\"\n",
@@ -74,6 +80,9 @@ fn public_launcher_supplies_leptos_defaults_without_overriding_user_values() {
         String::from_utf8(output.stdout).unwrap(),
         format!("logmancer-web|{}", suite_directory.join("site").display())
     );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Resolved LEPTOS_OUTPUT_NAME from default"));
+    assert!(stderr.contains("Resolved LEPTOS_SITE_ROOT from installed resource"));
 
     let output = Command::new(&launcher)
         .arg("web")
@@ -87,6 +96,34 @@ fn public_launcher_supplies_leptos_defaults_without_overriding_user_values() {
         String::from_utf8(output.stdout).unwrap(),
         "custom-output|/custom/site"
     );
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("Resolved LEPTOS_OUTPUT_NAME from environment"));
+    assert!(stderr.contains("Resolved LEPTOS_SITE_ROOT from environment"));
+}
+
+#[test]
+fn public_launcher_preserves_leptos_parameter_sources_for_web_logs() {
+    let _lock = LAUNCHER_TEST_LOCK.lock().unwrap();
+    let directory = tempfile::tempdir().unwrap();
+    let launcher = portable_launcher(directory.path());
+    ssr_site_fixture(directory.path());
+    web_fixture(
+        directory.path(),
+        "#!/bin/sh\nprintf '{\"output_name_source\":\"%s\",\"site_root_source\":\"%s\"}\\n' \"${LOGMANCER_LEPTOS_OUTPUT_NAME_SOURCE:-environment}\" \"${LOGMANCER_LEPTOS_SITE_ROOT_SOURCE:-environment}\" >&2\n",
+    );
+
+    let output = Command::new(launcher)
+        .arg("web")
+        .env_remove("LEPTOS_OUTPUT_NAME")
+        .env_remove("LEPTOS_SITE_ROOT")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains(
+        "{\"output_name_source\":\"default\",\"site_root_source\":\"installed_resource\"}"
+    ));
 }
 
 #[test]
@@ -94,9 +131,7 @@ fn public_launcher_supplies_leptos_defaults_to_desktop_and_keeps_tui_unchanged()
     let _lock = LAUNCHER_TEST_LOCK.lock().unwrap();
     let directory = tempfile::tempdir().unwrap();
     let launcher = portable_launcher(directory.path());
-    fs::create_dir(directory.path().join("site")).unwrap();
-    fs::write(directory.path().join("site/index.html"), "").unwrap();
-    fs::create_dir(directory.path().join("site/pkg")).unwrap();
+    ssr_site_fixture(directory.path());
     fs::write(
         directory.path().join("logmancer-desktop"),
         "#!/bin/sh\nprintf '%s|%s' \"$LEPTOS_OUTPUT_NAME\" \"$LEPTOS_SITE_ROOT\"\n",

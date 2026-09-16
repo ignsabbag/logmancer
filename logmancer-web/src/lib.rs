@@ -6,6 +6,8 @@ pub(crate) mod browser_api_client;
 pub mod components;
 pub mod file_opening;
 #[cfg(feature = "ssr")]
+pub mod runtime_parameter;
+#[cfg(feature = "ssr")]
 pub mod site_root;
 mod visual_rules_state;
 
@@ -14,6 +16,33 @@ mod visual_rules_state;
 pub struct WebServerOptions {
     pub bind_addr: std::net::SocketAddr,
     pub file_root: Option<std::path::PathBuf>,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, PartialEq, Eq)]
+pub struct ResolvedWebServerOptions {
+    pub options: WebServerOptions,
+    pub bind_addr_source: ConfigurationSource,
+    pub file_root_source: ConfigurationSource,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfigurationSource {
+    Cli,
+    Environment,
+    Default,
+}
+
+#[cfg(feature = "ssr")]
+impl std::fmt::Display for ConfigurationSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Cli => "cli",
+            Self::Environment => "environment",
+            Self::Default => "default",
+        })
+    }
 }
 
 #[cfg(feature = "ssr")]
@@ -52,6 +81,21 @@ impl WebServerOptions {
         file_root_from_env: Option<std::ffi::OsString>,
         default_port: u16,
     ) -> Result<Self, WebServerOptionsError> {
+        Self::resolve_from_sources(
+            arguments,
+            bind_addr_from_env,
+            file_root_from_env,
+            default_port,
+        )
+        .map(|resolved| resolved.options)
+    }
+
+    pub fn resolve_from_sources(
+        arguments: &[std::ffi::OsString],
+        bind_addr_from_env: Option<&str>,
+        file_root_from_env: Option<std::ffi::OsString>,
+        default_port: u16,
+    ) -> Result<ResolvedWebServerOptions, WebServerOptionsError> {
         let mut bind_addr = None;
         let mut file_root = None;
         let mut arguments = arguments.iter();
@@ -85,23 +129,49 @@ impl WebServerOptions {
                 _ => {
                     return Err(WebServerOptionsError::Usage(
                         "Unexpected argument; use --help for usage.".to_string(),
-                    ))
+                    ));
                 }
             }
         }
 
-        let bind_addr = match bind_addr {
-            Some(bind_addr) => bind_addr,
-            None => resolve_bind_addr(bind_addr_from_env, default_port)
-                .map_err(WebServerOptionsError::Usage)?,
+        let (bind_addr, bind_addr_source) = match bind_addr {
+            Some(bind_addr) => (bind_addr, ConfigurationSource::Cli),
+            None => match bind_addr_from_env
+                .map(str::trim)
+                .filter(|addr| !addr.is_empty())
+            {
+                Some(_) => (
+                    resolve_bind_addr(bind_addr_from_env, default_port)
+                        .map_err(WebServerOptionsError::Usage)?,
+                    ConfigurationSource::Environment,
+                ),
+                None => (
+                    resolve_bind_addr(None, default_port).map_err(WebServerOptionsError::Usage)?,
+                    ConfigurationSource::Default,
+                ),
+            },
         };
-        let file_root = file_root
-            .or_else(|| file_root_from_env.filter(|path| !path.is_empty()))
-            .map(std::path::PathBuf::from);
+        let (file_root, file_root_source) = match file_root {
+            Some(file_root) => (
+                Some(std::path::PathBuf::from(file_root)),
+                ConfigurationSource::Cli,
+            ),
+            None => match file_root_from_env.filter(|path| !path.is_empty()) {
+                Some(file_root) => (
+                    Some(std::path::PathBuf::from(file_root)),
+                    ConfigurationSource::Environment,
+                ),
+                None => (None, ConfigurationSource::Default),
+            },
+        };
 
-        Ok(Self {
-            bind_addr,
-            file_root,
+        Ok(ResolvedWebServerOptions {
+            options: Self {
+                bind_addr,
+                file_root,
+            },
+            bind_addr_source,
+            file_root_source,
         })
     }
 
@@ -109,8 +179,15 @@ impl WebServerOptions {
         arguments: &[std::ffi::OsString],
         default_port: u16,
     ) -> Result<Self, WebServerOptionsError> {
+        Self::resolve_from_env(arguments, default_port).map(|resolved| resolved.options)
+    }
+
+    pub fn resolve_from_env(
+        arguments: &[std::ffi::OsString],
+        default_port: u16,
+    ) -> Result<ResolvedWebServerOptions, WebServerOptionsError> {
         let bind_addr = std::env::var("LOGMANCER_BIND_ADDR").ok();
-        Self::from_sources(
+        Self::resolve_from_sources(
             arguments,
             bind_addr.as_deref(),
             std::env::var_os("LOGMANCER_SERVER_FILE_ROOT"),
@@ -163,14 +240,14 @@ fn config_directory(
 
 #[cfg(all(test, feature = "ssr"))]
 mod web_server_options_contract_tests {
-    use super::WebServerOptions;
+    use super::{ConfigurationSource, WebServerOptions};
     use std::ffi::OsString;
     use std::net::SocketAddr;
     use std::path::PathBuf;
 
     #[test]
     fn cli_options_override_environment_and_preserve_paths_with_spaces() {
-        let options = WebServerOptions::from_sources(
+        let options = WebServerOptions::resolve_from_sources(
             &[
                 OsString::from("--bind"),
                 OsString::from("0.0.0.0:8080"),
@@ -184,15 +261,20 @@ mod web_server_options_contract_tests {
         .unwrap();
 
         assert_eq!(
-            options.bind_addr,
+            options.options.bind_addr,
             "0.0.0.0:8080".parse::<SocketAddr>().unwrap()
         );
-        assert_eq!(options.file_root, Some(PathBuf::from("/logs with spaces")));
+        assert_eq!(
+            options.options.file_root,
+            Some(PathBuf::from("/logs with spaces"))
+        );
+        assert_eq!(options.bind_addr_source, ConfigurationSource::Cli);
+        assert_eq!(options.file_root_source, ConfigurationSource::Cli);
     }
 
     #[test]
     fn environment_options_override_safe_defaults() {
-        let options = WebServerOptions::from_sources(
+        let options = WebServerOptions::resolve_from_sources(
             &[],
             Some("127.0.0.1:9000"),
             Some(OsString::from("/environment root")),
@@ -200,13 +282,35 @@ mod web_server_options_contract_tests {
         )
         .unwrap();
 
-        assert_eq!(options.bind_addr, "127.0.0.1:9000".parse().unwrap());
-        assert_eq!(options.file_root, Some(PathBuf::from("/environment root")));
+        assert_eq!(options.options.bind_addr, "127.0.0.1:9000".parse().unwrap());
+        assert_eq!(
+            options.options.file_root,
+            Some(PathBuf::from("/environment root"))
+        );
+        assert_eq!(options.bind_addr_source, ConfigurationSource::Environment);
+        assert_eq!(options.file_root_source, ConfigurationSource::Environment);
 
         let defaults =
-            WebServerOptions::from_sources(&[], Some(""), Some(OsString::new()), 3000).unwrap();
-        assert_eq!(defaults.bind_addr, "127.0.0.1:3000".parse().unwrap());
-        assert_eq!(defaults.file_root, None);
+            WebServerOptions::resolve_from_sources(&[], Some(""), Some(OsString::new()), 3000)
+                .unwrap();
+        assert_eq!(
+            defaults.options.bind_addr,
+            "127.0.0.1:3000".parse().unwrap()
+        );
+        assert_eq!(defaults.options.file_root, None);
+        assert_eq!(defaults.bind_addr_source, ConfigurationSource::Default);
+        assert_eq!(defaults.file_root_source, ConfigurationSource::Default);
+    }
+
+    #[test]
+    fn public_options_can_be_constructed_with_bind_address_and_file_root_only() {
+        let options = WebServerOptions {
+            bind_addr: "127.0.0.1:3000".parse().unwrap(),
+            file_root: None,
+        };
+
+        assert_eq!(options.bind_addr, "127.0.0.1:3000".parse().unwrap());
+        assert_eq!(options.file_root, None);
     }
 
     #[test]
@@ -458,8 +562,13 @@ async fn start_leptos_with_registry_inner(
 
     let conf = get_configuration(None).unwrap();
     let mut leptos_options = conf.leptos_options;
-    let resolved_site_root = site_root::resolve_site_root(
-        std::env::var_os("LEPTOS_SITE_ROOT"),
+    let configured_site_root = std::env::var_os("LEPTOS_SITE_ROOT");
+    let resolved_site_root = site_root::resolve_site_root_with_parameter_source(
+        configured_site_root.clone(),
+        runtime_parameter::resolve_runtime_parameter_source(
+            configured_site_root.as_deref(),
+            std::env::var_os(runtime_parameter::LEPTOS_SITE_ROOT_SOURCE_ENV).as_deref(),
+        ),
         desktop_site_root,
         std::env::current_exe().ok().as_deref(),
         std::path::PathBuf::from(leptos_options.site_root.as_ref()),
@@ -470,10 +579,7 @@ async fn start_leptos_with_registry_inner(
         .into_owned()
         .into();
     info!(
-        site_root = %resolved_site_root.path.display(),
         site_root_source = %resolved_site_root.source,
-        configured_site_root = ?std::env::var("LEPTOS_SITE_ROOT").ok(),
-        output_name = ?std::env::var("LEPTOS_OUTPUT_NAME").ok(),
         "Resolved Leptos runtime site root"
     );
     // Generate the list of routes in your Leptos App
