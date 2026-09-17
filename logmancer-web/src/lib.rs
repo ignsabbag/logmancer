@@ -6,8 +6,195 @@ pub(crate) mod browser_api_client;
 pub mod components;
 pub mod file_opening;
 #[cfg(feature = "ssr")]
+pub mod runtime_parameter;
+#[cfg(feature = "ssr")]
 pub mod site_root;
 mod visual_rules_state;
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, PartialEq, Eq)]
+pub struct WebServerOptions {
+    pub bind_addr: std::net::SocketAddr,
+    pub file_root: Option<std::path::PathBuf>,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, PartialEq, Eq)]
+pub struct ResolvedWebServerOptions {
+    pub options: WebServerOptions,
+    pub bind_addr_source: ConfigurationSource,
+    pub file_root_source: ConfigurationSource,
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfigurationSource {
+    Cli,
+    Environment,
+    Default,
+}
+
+#[cfg(feature = "ssr")]
+impl std::fmt::Display for ConfigurationSource {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Cli => "cli",
+            Self::Environment => "environment",
+            Self::Default => "default",
+        })
+    }
+}
+
+#[cfg(feature = "ssr")]
+#[derive(Debug, PartialEq, Eq)]
+pub enum WebServerOptionsError {
+    Help,
+    Usage(String),
+}
+
+#[cfg(feature = "ssr")]
+impl WebServerOptionsError {
+    pub fn is_help(&self) -> bool {
+        matches!(self, Self::Help)
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl std::fmt::Display for WebServerOptionsError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Help => formatter
+                .write_str("Usage: logmancer-web [--bind <socket-address>] [--file-root <path>]"),
+            Self::Usage(message) => formatter.write_str(message),
+        }
+    }
+}
+
+#[cfg(feature = "ssr")]
+impl std::error::Error for WebServerOptionsError {}
+
+#[cfg(feature = "ssr")]
+impl WebServerOptions {
+    pub fn from_sources(
+        arguments: &[std::ffi::OsString],
+        bind_addr_from_env: Option<&str>,
+        file_root_from_env: Option<std::ffi::OsString>,
+        default_port: u16,
+    ) -> Result<Self, WebServerOptionsError> {
+        Self::resolve_from_sources(
+            arguments,
+            bind_addr_from_env,
+            file_root_from_env,
+            default_port,
+        )
+        .map(|resolved| resolved.options)
+    }
+
+    pub fn resolve_from_sources(
+        arguments: &[std::ffi::OsString],
+        bind_addr_from_env: Option<&str>,
+        file_root_from_env: Option<std::ffi::OsString>,
+        default_port: u16,
+    ) -> Result<ResolvedWebServerOptions, WebServerOptionsError> {
+        let mut bind_addr = None;
+        let mut file_root = None;
+        let mut arguments = arguments.iter();
+
+        while let Some(argument) = arguments.next() {
+            match argument.to_str() {
+                Some("--help") | Some("-h") => return Err(WebServerOptionsError::Help),
+                Some("--bind") => {
+                    let value = arguments.next().ok_or_else(|| {
+                        WebServerOptionsError::Usage("--bind requires a socket address".to_string())
+                    })?;
+                    let value = value.to_str().ok_or_else(|| {
+                        WebServerOptionsError::Usage("--bind must be a socket address".to_string())
+                    })?;
+                    bind_addr = Some(value.parse().map_err(|error| {
+                        WebServerOptionsError::Usage(format!(
+                            "--bind must be a socket address such as 0.0.0.0:3000: {error}"
+                        ))
+                    })?);
+                }
+                Some("--file-root") => {
+                    file_root = Some(arguments.next().cloned().ok_or_else(|| {
+                        WebServerOptionsError::Usage("--file-root requires a path".to_string())
+                    })?);
+                }
+                Some(option) if option.starts_with('-') => {
+                    return Err(WebServerOptionsError::Usage(format!(
+                        "Unknown option: {option}"
+                    )));
+                }
+                _ => {
+                    return Err(WebServerOptionsError::Usage(
+                        "Unexpected argument; use --help for usage.".to_string(),
+                    ));
+                }
+            }
+        }
+
+        let (bind_addr, bind_addr_source) = match bind_addr {
+            Some(bind_addr) => (bind_addr, ConfigurationSource::Cli),
+            None => match bind_addr_from_env
+                .map(str::trim)
+                .filter(|addr| !addr.is_empty())
+            {
+                Some(_) => (
+                    resolve_bind_addr(bind_addr_from_env, default_port)
+                        .map_err(WebServerOptionsError::Usage)?,
+                    ConfigurationSource::Environment,
+                ),
+                None => (
+                    resolve_bind_addr(None, default_port).map_err(WebServerOptionsError::Usage)?,
+                    ConfigurationSource::Default,
+                ),
+            },
+        };
+        let (file_root, file_root_source) = match file_root {
+            Some(file_root) => (
+                Some(std::path::PathBuf::from(file_root)),
+                ConfigurationSource::Cli,
+            ),
+            None => match file_root_from_env.filter(|path| !path.is_empty()) {
+                Some(file_root) => (
+                    Some(std::path::PathBuf::from(file_root)),
+                    ConfigurationSource::Environment,
+                ),
+                None => (None, ConfigurationSource::Default),
+            },
+        };
+
+        Ok(ResolvedWebServerOptions {
+            options: Self {
+                bind_addr,
+                file_root,
+            },
+            bind_addr_source,
+            file_root_source,
+        })
+    }
+
+    pub fn from_env(
+        arguments: &[std::ffi::OsString],
+        default_port: u16,
+    ) -> Result<Self, WebServerOptionsError> {
+        Self::resolve_from_env(arguments, default_port).map(|resolved| resolved.options)
+    }
+
+    pub fn resolve_from_env(
+        arguments: &[std::ffi::OsString],
+        default_port: u16,
+    ) -> Result<ResolvedWebServerOptions, WebServerOptionsError> {
+        let bind_addr = std::env::var("LOGMANCER_BIND_ADDR").ok();
+        Self::resolve_from_sources(
+            arguments,
+            bind_addr.as_deref(),
+            std::env::var_os("LOGMANCER_SERVER_FILE_ROOT"),
+            default_port,
+        )
+    }
+}
 
 #[cfg(feature = "ssr")]
 pub fn config_directory_from_env() -> std::path::PathBuf {
@@ -49,6 +236,102 @@ fn config_directory(
     config_dir
         .filter(|value| !value.as_os_str().is_empty())
         .unwrap_or_else(|| working_dir.join("config"))
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod web_server_options_contract_tests {
+    use super::{ConfigurationSource, WebServerOptions};
+    use std::ffi::OsString;
+    use std::net::SocketAddr;
+    use std::path::PathBuf;
+
+    #[test]
+    fn cli_options_override_environment_and_preserve_paths_with_spaces() {
+        let options = WebServerOptions::resolve_from_sources(
+            &[
+                OsString::from("--bind"),
+                OsString::from("0.0.0.0:8080"),
+                OsString::from("--file-root"),
+                OsString::from("/logs with spaces"),
+            ],
+            Some("127.0.0.1:9000"),
+            Some(OsString::from("/environment root")),
+            3000,
+        )
+        .unwrap();
+
+        assert_eq!(
+            options.options.bind_addr,
+            "0.0.0.0:8080".parse::<SocketAddr>().unwrap()
+        );
+        assert_eq!(
+            options.options.file_root,
+            Some(PathBuf::from("/logs with spaces"))
+        );
+        assert_eq!(options.bind_addr_source, ConfigurationSource::Cli);
+        assert_eq!(options.file_root_source, ConfigurationSource::Cli);
+    }
+
+    #[test]
+    fn environment_options_override_safe_defaults() {
+        let options = WebServerOptions::resolve_from_sources(
+            &[],
+            Some("127.0.0.1:9000"),
+            Some(OsString::from("/environment root")),
+            3000,
+        )
+        .unwrap();
+
+        assert_eq!(options.options.bind_addr, "127.0.0.1:9000".parse().unwrap());
+        assert_eq!(
+            options.options.file_root,
+            Some(PathBuf::from("/environment root"))
+        );
+        assert_eq!(options.bind_addr_source, ConfigurationSource::Environment);
+        assert_eq!(options.file_root_source, ConfigurationSource::Environment);
+
+        let defaults =
+            WebServerOptions::resolve_from_sources(&[], Some(""), Some(OsString::new()), 3000)
+                .unwrap();
+        assert_eq!(
+            defaults.options.bind_addr,
+            "127.0.0.1:3000".parse().unwrap()
+        );
+        assert_eq!(defaults.options.file_root, None);
+        assert_eq!(defaults.bind_addr_source, ConfigurationSource::Default);
+        assert_eq!(defaults.file_root_source, ConfigurationSource::Default);
+    }
+
+    #[test]
+    fn public_options_can_be_constructed_with_bind_address_and_file_root_only() {
+        let options = WebServerOptions {
+            bind_addr: "127.0.0.1:3000".parse().unwrap(),
+            file_root: None,
+        };
+
+        assert_eq!(options.bind_addr, "127.0.0.1:3000".parse().unwrap());
+        assert_eq!(options.file_root, None);
+    }
+
+    #[test]
+    fn help_and_invalid_arguments_are_actionable() {
+        assert!(
+            WebServerOptions::from_sources(&[OsString::from("--help")], None, None, 3000)
+                .unwrap_err()
+                .is_help()
+        );
+        for arguments in [
+            vec![OsString::from("--bind")],
+            vec![OsString::from("--bind"), OsString::from("not-an-address")],
+            vec![OsString::from("--file-root")],
+            vec![OsString::from("--unknown")],
+        ] {
+            assert!(WebServerOptions::from_sources(&arguments, None, None, 3000)
+                .unwrap_err()
+                .to_string()
+                .contains("--"));
+        }
+    }
 }
 
 #[cfg(all(test, feature = "ssr"))]
@@ -218,6 +501,26 @@ pub async fn start_leptos(addr: std::net::SocketAddr) {
 }
 
 #[cfg(feature = "ssr")]
+pub async fn start_leptos_with_options(options: WebServerOptions) -> Result<(), String> {
+    use crate::api::server_browser::{ServerFileRoot, SsrFileOpenPolicy};
+    use logmancer_core::FileOpenPolicy;
+    use std::sync::Arc;
+
+    let file_root = options
+        .file_root
+        .as_deref()
+        .map(ServerFileRoot::from_path)
+        .transpose()
+        .map_err(|error| format!("Could not use server file root: {error}"))?;
+    let file_open_policy = file_root
+        .clone()
+        .map(|root| Arc::new(SsrFileOpenPolicy::new(root)) as Arc<dyn FileOpenPolicy>);
+    let registry = registry_runtime(config_directory_from_env(), file_open_policy);
+    start_leptos_with_registry_inner(options.bind_addr, registry, None, file_root).await;
+    Ok(())
+}
+
+#[cfg(feature = "ssr")]
 pub async fn start_leptos_with_registry(
     addr: std::net::SocketAddr,
     registry: std::sync::Arc<logmancer_core::LogRegistry>,
@@ -231,7 +534,13 @@ pub async fn start_leptos_with_registry_at_site_root(
     registry: std::sync::Arc<logmancer_core::LogRegistry>,
     desktop_site_root: Option<std::path::PathBuf>,
 ) {
-    start_leptos_with_registry_inner(addr, registry, desktop_site_root).await;
+    start_leptos_with_registry_inner(
+        addr,
+        registry,
+        desktop_site_root,
+        crate::api::server_browser::ServerFileRoot::from_env(),
+    )
+    .await;
 }
 
 #[cfg(feature = "ssr")]
@@ -239,8 +548,9 @@ async fn start_leptos_with_registry_inner(
     addr: std::net::SocketAddr,
     registry: std::sync::Arc<logmancer_core::LogRegistry>,
     desktop_site_root: Option<std::path::PathBuf>,
+    server_file_root: Option<crate::api::server_browser::ServerFileRoot>,
 ) {
-    use crate::api::config::api_routes_with_registry;
+    use crate::api::config::api_routes_with_registry_and_file_root;
     use crate::app::shell;
     use crate::components::App;
     use axum::Router;
@@ -252,8 +562,13 @@ async fn start_leptos_with_registry_inner(
 
     let conf = get_configuration(None).unwrap();
     let mut leptos_options = conf.leptos_options;
-    let resolved_site_root = site_root::resolve_site_root(
-        std::env::var_os("LEPTOS_SITE_ROOT"),
+    let configured_site_root = std::env::var_os("LEPTOS_SITE_ROOT");
+    let resolved_site_root = site_root::resolve_site_root_with_parameter_source(
+        configured_site_root.clone(),
+        runtime_parameter::resolve_runtime_parameter_source(
+            configured_site_root.as_deref(),
+            std::env::var_os(runtime_parameter::LEPTOS_SITE_ROOT_SOURCE_ENV).as_deref(),
+        ),
         desktop_site_root,
         std::env::current_exe().ok().as_deref(),
         std::path::PathBuf::from(leptos_options.site_root.as_ref()),
@@ -264,17 +579,17 @@ async fn start_leptos_with_registry_inner(
         .into_owned()
         .into();
     info!(
-        site_root = %resolved_site_root.path.display(),
         site_root_source = %resolved_site_root.source,
-        configured_site_root = ?std::env::var("LEPTOS_SITE_ROOT").ok(),
-        output_name = ?std::env::var("LEPTOS_OUTPUT_NAME").ok(),
         "Resolved Leptos runtime site root"
     );
     // Generate the list of routes in your Leptos App
     let routes = generate_route_list(App);
 
     let app = Router::new()
-        .nest("/api", api_routes_with_registry(registry.clone()))
+        .nest(
+            "/api",
+            api_routes_with_registry_and_file_root(registry.clone(), server_file_root),
+        )
         .leptos_routes(&leptos_options, routes, {
             let leptos_options = leptos_options.clone();
             move || shell(leptos_options.clone())

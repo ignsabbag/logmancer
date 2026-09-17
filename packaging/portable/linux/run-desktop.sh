@@ -8,4 +8,4 @@ export LEPTOS_SITE_ROOT="$SCRIPT_DIR/site"
 mkdir -p "$SCRIPT_DIR/logs"
 export LOGMANCER_LOG_FILE="$SCRIPT_DIR/logs/logmancer-desktop.log"
 
-exec "$SCRIPT_DIR/logmancer-desktop" "$@"
+exec "$SCRIPT_DIR/logmancer" desktop "$@"

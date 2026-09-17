@@ -40,8 +40,13 @@ pub(crate) fn restoration_error_response(error: &std::io::Error) -> axum::respon
 }
 
 pub fn api_routes_with_registry<T>(registry: Arc<LogRegistry>) -> Router<T> {
-    let server_file_root = ServerFileRoot::from_env();
+    api_routes_with_registry_and_file_root(registry, ServerFileRoot::from_env())
+}
 
+pub fn api_routes_with_registry_and_file_root<T>(
+    registry: Arc<LogRegistry>,
+    server_file_root: Option<ServerFileRoot>,
+) -> Router<T> {
     Router::new()
         .route("/server-browser/status", get(server_browser_status))
         .route("/server-browser/list", post(server_browser_list))

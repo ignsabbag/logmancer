@@ -9,7 +9,8 @@ export LEPTOS_SITE_ROOT="$SCRIPT_DIR/site"
 # export LOGMANCER_SERVER_FILE_ROOT=~/
 # Exposes the standalone web server on all network interfaces at port 3000.
 # export LOGMANCER_BIND_ADDR=0.0.0.0:3000
+# Equivalent CLI options: --file-root <path> and --bind <socket-address>.
 mkdir -p "$SCRIPT_DIR/logs"
 export LOGMANCER_LOG_FILE="$SCRIPT_DIR/logs/logmancer-web.log"
 
-exec "$SCRIPT_DIR/logmancer-web" "$@"
+exec "$SCRIPT_DIR/logmancer" web "$@"

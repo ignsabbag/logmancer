@@ -25,6 +25,18 @@ pub struct SsrFileOpenPolicy {
 }
 
 impl ServerFileRoot {
+    pub fn from_path(path: &Path) -> std::io::Result<Self> {
+        let canonical_path = std::fs::canonicalize(path)?;
+        if !canonical_path.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "server file root must be a directory",
+            ));
+        }
+
+        Ok(Self { canonical_path })
+    }
+
     pub fn from_env() -> Option<Self> {
         let raw = std::env::var("LOGMANCER_SERVER_FILE_ROOT").ok()?;
         let trimmed = raw.trim();
@@ -32,12 +44,7 @@ impl ServerFileRoot {
             return None;
         }
 
-        let canonical_path = std::fs::canonicalize(trimmed).ok()?;
-        if !canonical_path.is_dir() {
-            return None;
-        }
-
-        Some(Self { canonical_path })
+        Self::from_path(Path::new(trimmed)).ok()
     }
 }
 
