@@ -1,0 +1,19 @@
+{
+  "bundle": {
+    "resources": {
+      "../target/site": "site"
+    },
+    "fileAssociations": [
+      {
+        "ext": ["log"],
+        "name": "Logmancer Log File",
+        "description": "Logmancer log file"
+      }
+    ],
+    "externalBin": [
+      "binaries/logmancer",
+      "binaries/logmancer-web",
+      "binaries/logmancer-tui"
+    ]
+  }
+}
