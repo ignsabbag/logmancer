@@ -86,6 +86,12 @@ Logmancer is structured as a multi-crate workspace:
     cargo tauri build --config logmancer-desktop/tauri.bundle.conf.json
     ```
 
+The Windows build workflow also produces a per-user NSIS installer artifact.
+It installs Desktop, the `logmancer` launcher, standalone Web and TUI binaries,
+and the generated `site/` resources in one directory. Release publication of
+that installer is tracked separately. The installer registers `.log` files with
+Desktop, so Logmancer is available in Windows "Open with".
+
 ---
 
 ## Usage

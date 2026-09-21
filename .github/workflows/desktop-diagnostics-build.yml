@@ -81,6 +81,25 @@ jobs:
           LEPTOS_SITE_ROOT: target/site
         run: cargo leptos build --release --project logmancer-web
 
+      - name: Install Tauri CLI
+        if: runner.os == 'Windows'
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build Windows NSIS installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $targetTriple = "${{ matrix.target }}"
+          $targetDir = "target/$targetTriple/release"
+          $sidecarDir = "logmancer-desktop/binaries"
+
+          New-Item -ItemType Directory -Path $sidecarDir -Force | Out-Null
+          foreach ($binary in @("logmancer", "logmancer-web", "logmancer-tui")) {
+            Copy-Item "$targetDir/$binary.exe" "$sidecarDir/$binary-$targetTriple.exe" -Force
+          }
+
+          cargo tauri build --target $targetTriple --bundles nsis --config logmancer-desktop/tauri.windows.bundle.conf.json
+
       - name: Package Linux diagnostic artifacts
         if: runner.os == 'Linux'
         run: |
@@ -122,4 +141,12 @@ jobs:
         with:
           name: logmancer-diagnostics-package-${{ matrix.package_name }}
           path: dist/logmancer-${{ matrix.package_name }}
+          if-no-files-found: error
+
+      - name: Upload Windows NSIS installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-diagnostics-installer-windows
+          path: target/${{ matrix.target }}/release/bundle/nsis/*.exe
           if-no-files-found: error

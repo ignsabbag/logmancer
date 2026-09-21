@@ -8,6 +8,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- Windows build artifacts now include a per-user NSIS installer containing Desktop, the launcher, standalone Web and TUI executables, and generated `site/` resources.
+- The Windows NSIS installer registers `.log` files for opening with Logmancer Desktop.
 - Logmancer now ships a public `logmancer` launcher that defaults to Desktop on Windows and selects Desktop or TUI from the current Linux session; Web and all explicit variant commands remain available.
 - When launched from Explorer, the Windows Desktop launcher now starts Desktop before closing its own console, preserving startup errors while terminals used to launch Logmancer remain attached.
 - The launcher now supplies bundled Leptos runtime defaults to Desktop and Web without replacing explicit overrides. Standalone Web accepts `--bind` and `--file-root`, with CLI values taking precedence over environment variables.
