@@ -1,0 +1,26 @@
+{
+  "bundle": {
+    "resources": {
+      "../target/site": "site"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libgtk-3-0",
+          "libwebkit2gtk-4.1-0",
+          "libsoup-3.0-0"
+        ],
+        "files": {
+          "/usr/lib/logmancer/logmancer": "../target/x86_64-unknown-linux-gnu/release/logmancer",
+          "/usr/lib/logmancer/logmancer-desktop": "../target/x86_64-unknown-linux-gnu/release/logmancer-desktop",
+          "/usr/lib/logmancer/logmancer-web": "../target/x86_64-unknown-linux-gnu/release/logmancer-web",
+          "/usr/lib/logmancer/logmancer-tui": "../target/x86_64-unknown-linux-gnu/release/logmancer-tui",
+          "/usr/lib/logmancer/site": "../target/site",
+          "/usr/bin/logmancer": "../packaging/debian/bin/logmancer",
+          "/usr/bin/logmancer-web": "../packaging/debian/bin/logmancer-web",
+          "/usr/bin/logmancer-tui": "../packaging/debian/bin/logmancer-tui"
+        }
+      }
+    }
+  }
+}
