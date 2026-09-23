@@ -2846,7 +2846,7 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
 name = "logmancer-core"
-version = "0.4.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "atomic-write-file",
  "crossbeam-channel",
@@ -2868,7 +2868,7 @@ dependencies = [
 
 [[package]]
 name = "logmancer-desktop"
-version = "0.4.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "logmancer-core",
  "logmancer-web",
@@ -2882,7 +2882,7 @@ dependencies = [
 
 [[package]]
 name = "logmancer-launcher"
-version = "0.4.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "libc",
  "tempfile",
@@ -2891,7 +2891,7 @@ dependencies = [
 
 [[package]]
 name = "logmancer-tui"
-version = "0.4.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -2902,7 +2902,7 @@ dependencies = [
 
 [[package]]
 name = "logmancer-web"
-version = "0.4.1"
+version = "0.5.0-beta.1"
 dependencies = [
  "axum",
  "console_error_panic_hook",

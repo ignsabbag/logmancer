@@ -10,19 +10,22 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 - Desktop, standalone Web, and TUI now write daily runtime logs to per-user directories on Linux and Windows, retain up to seven files per variant, and mirror errors to an attached terminal.
 
+- Linux releases now include a DEB package that installs the complete suite, generated web assets, desktop-menu entry, and public commands.
+- Windows build artifacts now include a per-user NSIS installer containing Desktop, the launcher, standalone Web and TUI executables, and generated `site/` resources; the installer also registers `.log` files for opening with Logmancer Desktop.
+- Logmancer now ships a public `logmancer` launcher that defaults to Desktop on Windows and selects Desktop or TUI from the current Linux session; Web and all explicit variant commands remain available.
+- Standalone Web now accepts `--bind` and `--file-root`, with CLI values taking precedence over environment variables.
+- The core registry now retains idle readers using a 30-minute TTL and a soft 256 MiB index budget, safely removes them after active operations finish, releases their associated resources, and transparently restores evicted persisted readers on access.
+
 ### Changed
 
-- Linux releases now include a DEB package that installs the complete suite, generated web assets, desktop-menu entry, and public commands.
-- Windows build artifacts now include a per-user NSIS installer containing Desktop, the launcher, standalone Web and TUI executables, and generated `site/` resources.
-- The Windows NSIS installer registers `.log` files for opening with Logmancer Desktop.
-- Logmancer now ships a public `logmancer` launcher that defaults to Desktop on Windows and selects Desktop or TUI from the current Linux session; Web and all explicit variant commands remain available.
+- The launcher, installed Desktop, and standalone Web now resolve bundled Leptos runtime defaults and generated `site/` assets without requiring `LEPTOS_SITE_ROOT`; explicit overrides remain authoritative, and Desktop bundle assets are generated only during packaging.
+- Runtime logs now identify each resolved parameter's source without logging its value.
+
+### Fixed
+
 - When launched from Explorer, the Windows Desktop launcher now starts Desktop before closing its own console, preserving startup errors while terminals used to launch Logmancer remain attached.
-- The launcher now supplies bundled Leptos runtime defaults to Desktop and Web without replacing explicit overrides. Standalone Web accepts `--bind` and `--file-root`, with CLI values taking precedence over environment variables.
-- Installed Desktop and standalone Web now resolve their generated `site/` assets without requiring `LEPTOS_SITE_ROOT`; explicit environment configuration remains an override, and Desktop bundle assets are generated only during packaging.
-- Packaged Desktop and Web now accept complete SSR asset trees without a static `index.html`, and runtime logs identify each resolved parameter's source without logging its value.
-- The core registry can now remove inactive readers after their active operations finish, releasing their workers, memory map, indexes, filter state, and search state.
-- Persisted reader restoration now reports actionable missing and authorization failures instead of treating them as unopened files.
-- The core registry now retains idle readers on file open using a 30-minute TTL and a soft 256 MiB index budget, while transparently restoring evicted persisted readers on access.
+- Packaged Desktop and Web now accept complete SSR asset trees without requiring a static `index.html`.
+- Persisted reader restoration now reports actionable missing-file and authorization failures instead of treating them as unopened files.
 
 ## [0.4.1] - 2026-08-28
 
