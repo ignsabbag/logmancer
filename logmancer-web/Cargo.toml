@@ -8,6 +8,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 logmancer-core = { path = "../logmancer-core" }
+directories = { version = "6", optional = true }
 leptos = { version = "0.8.2" }
 leptos_router = { version = "0.8.2" }
 leptos-use = { version = "0.16.0-beta2", features = ["use_resize_observer"] }
@@ -35,6 +36,8 @@ hydrate = [
 ]
 ssr = [
     "logmancer-core/native-persistence",
+    "logmancer-core/native-logging",
+    "dep:directories",
     "dep:axum",
     "dep:tokio",
     "dep:leptos_axum",

@@ -9,15 +9,17 @@ use crossterm::{
     style::{Attribute, Color, Print, PrintStyledContent, Stylize},
     terminal,
 };
-use log::{LevelFilter, debug, error};
-use logmancer_core::{LogReader, PageSearchResult, SearchDisplayStatus};
+use log::error;
+use logmancer_core::{LogReader, PageSearchResult, SearchDisplayStatus, init_file_logging};
 use std::env;
-use std::fs::OpenOptions;
-use std::io::{Write, stdout};
+use std::io::{IsTerminal, Write, stdout};
 use std::{process, time};
 
 fn main() -> std::io::Result<()> {
-    setup_logging().expect("Failed to initialize logging");
+    if let Err(error) = setup_logging() {
+        eprintln!("Could not initialize file logging: {error}");
+        process::exit(1);
+    }
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -356,20 +358,11 @@ fn trunc_str(s: &str, max_len: usize) -> &str {
     }
 }
 
-fn setup_logging() -> Result<(), Box<dyn std::error::Error>> {
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("logmancer.log")?;
-
-    env_logger::Builder::from_default_env()
-        .filter_level(LevelFilter::Debug)
-        .target(env_logger::Target::Pipe(Box::new(file)))
-        .init();
-
-    debug!("Log initialized");
-
-    Ok(())
+fn setup_logging() -> std::io::Result<()> {
+    let directory = directories::ProjectDirs::from("dev", "ignsabbag", "Logmancer")
+        .map(|directories| directories.data_local_dir().join("logs"))
+        .ok_or_else(|| std::io::Error::other("could not resolve the user data directory"))?;
+    init_file_logging(&directory, "tui", std::io::stderr().is_terminal())
 }
 
 #[cfg(test)]

@@ -2,6 +2,8 @@
 mod config_lock;
 #[cfg(feature = "native-persistence")]
 mod config_store;
+#[cfg(feature = "native-logging")]
+mod file_logging;
 mod file_ops;
 mod handler;
 mod models;
@@ -18,6 +20,8 @@ mod workers;
 
 #[cfg(feature = "native-persistence")]
 pub use config_store::ConfigStore;
+#[cfg(feature = "native-logging")]
+pub use file_logging::{MAX_LOG_FILES, init_file_logging, init_file_logging_with_name};
 pub use models::file_info::FileInfo;
 pub use models::page_result::{PageLine, PageResult};
 pub use models::search::{PageSearchResult, SearchDisplayStatus, SearchMatch, SearchStatus};

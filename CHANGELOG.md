@@ -6,6 +6,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added
+
+- Desktop, standalone Web, and TUI now write daily runtime logs to per-user directories on Linux and Windows, retain up to seven files per variant, and mirror errors to an attached terminal.
+
 ### Changed
 
 - Linux releases now include a DEB package that installs the complete suite, generated web assets, desktop-menu entry, and public commands.

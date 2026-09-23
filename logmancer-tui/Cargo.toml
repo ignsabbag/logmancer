@@ -5,12 +5,12 @@ edition = "2024"
 
 [dependencies]
 crossterm = "0.29.0"
-logmancer-core = { path = "../logmancer-core" }
+logmancer-core = { path = "../logmancer-core", features = ["native-logging"] }
 
 # Logging
 log = "0.4"
 anyhow = "1.0"
-env_logger = "0.11.8"
+directories = "6"
 
 [[bin]]
 name = "logmancer-tui"
