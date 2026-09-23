@@ -101,6 +101,37 @@ fn public_launcher_supplies_leptos_defaults_without_overriding_user_values() {
     assert!(stderr.contains("Resolved LEPTOS_SITE_ROOT from environment"));
 }
 
+#[cfg(unix)]
+#[test]
+fn public_launcher_resolves_suite_resources_when_invoked_through_a_debian_path_link() {
+    let _lock = LAUNCHER_TEST_LOCK.lock().unwrap();
+    let installation = tempfile::tempdir().unwrap();
+    let suite_directory = installation.path().join("usr/lib/logmancer");
+    let bin_directory = installation.path().join("usr/bin");
+    fs::create_dir_all(&suite_directory).unwrap();
+    fs::create_dir_all(&bin_directory).unwrap();
+    let suite_launcher = portable_launcher(&suite_directory);
+    let public_launcher = bin_directory.join("logmancer");
+    std::os::unix::fs::symlink(suite_launcher, &public_launcher).unwrap();
+    ssr_site_fixture(&suite_directory);
+    web_fixture(
+        &suite_directory,
+        "#!/bin/sh\nprintf '%s' \"$LEPTOS_SITE_ROOT\"\n",
+    );
+
+    let output = Command::new(public_launcher)
+        .arg("web")
+        .env_remove("LEPTOS_SITE_ROOT")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        suite_directory.join("site").display().to_string()
+    );
+}
+
 #[test]
 fn public_launcher_preserves_leptos_parameter_sources_for_web_logs() {
     let _lock = LAUNCHER_TEST_LOCK.lock().unwrap();

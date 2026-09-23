@@ -8,6 +8,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- Linux releases now include a DEB package that installs the complete suite, generated web assets, desktop-menu entry, and public commands.
 - Windows build artifacts now include a per-user NSIS installer containing Desktop, the launcher, standalone Web and TUI executables, and generated `site/` resources.
 - The Windows NSIS installer registers `.log` files for opening with Logmancer Desktop.
 - Logmancer now ships a public `logmancer` launcher that defaults to Desktop on Windows and selects Desktop or TUI from the current Linux session; Web and all explicit variant commands remain available.

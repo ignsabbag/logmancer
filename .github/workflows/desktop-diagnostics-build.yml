@@ -82,8 +82,13 @@ jobs:
         run: cargo leptos build --release --project logmancer-web
 
       - name: Install Tauri CLI
-        if: runner.os == 'Windows'
         run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build Linux DEB package
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x packaging/debian/bin/*
+          cargo tauri build --target ${{ matrix.target }} --bundles deb --config logmancer-desktop/tauri.deb.bundle.conf.json
 
       - name: Build Windows NSIS installer
         if: runner.os == 'Windows'
@@ -149,4 +154,12 @@ jobs:
         with:
           name: logmancer-diagnostics-installer-windows
           path: target/${{ matrix.target }}/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
+      - name: Upload Linux DEB package
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-diagnostics-installer-linux
+          path: target/${{ matrix.target }}/release/bundle/deb/*.deb
           if-no-files-found: error

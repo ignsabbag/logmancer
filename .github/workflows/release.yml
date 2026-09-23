@@ -82,6 +82,30 @@ jobs:
           LEPTOS_SITE_ROOT: target/site
         run: cargo leptos build --release --project logmancer-web
 
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build Linux DEB package
+        if: runner.os == 'Linux'
+        run: |
+          chmod +x packaging/debian/bin/*
+          cargo tauri build --target ${{ matrix.target }} --bundles deb --config logmancer-desktop/tauri.deb.bundle.conf.json
+
+      - name: Build Windows NSIS installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $targetTriple = "${{ matrix.target }}"
+          $targetDir = "target/$targetTriple/release"
+          $sidecarDir = "logmancer-desktop/binaries"
+
+          New-Item -ItemType Directory -Path $sidecarDir -Force | Out-Null
+          foreach ($binary in @("logmancer", "logmancer-web", "logmancer-tui")) {
+            Copy-Item "$targetDir/$binary.exe" "$sidecarDir/$binary-$targetTriple.exe" -Force
+          }
+
+          cargo tauri build --target $targetTriple --bundles nsis --config logmancer-desktop/tauri.windows.bundle.conf.json
+
       - name: Package Linux portable zip
         if: runner.os == 'Linux'
         run: |
@@ -130,6 +154,22 @@ jobs:
           path: dist/logmancer-*-${{ matrix.package_name }}-portable.zip
           if-no-files-found: error
 
+      - name: Upload DEB artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-installer-linux
+          path: target/${{ matrix.target }}/release/bundle/deb/*.deb
+          if-no-files-found: error
+
+      - name: Upload NSIS installer artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-installer-windows
+          path: target/${{ matrix.target }}/release/bundle/nsis/*.exe
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub release
     needs: package
@@ -137,10 +177,10 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Download portable zips
+      - name: Download release assets
         uses: actions/download-artifact@v7
         with:
-          pattern: logmancer-portable-*
+          pattern: logmancer-*
           path: dist
           merge-multiple: true
 
@@ -151,7 +191,7 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" dist/*.zip --clobber
+            gh release upload "$TAG_NAME" dist/*.zip dist/*.deb dist/*.exe --clobber
           else
-            gh release create "$TAG_NAME" dist/*.zip --title "$TAG_NAME" --generate-notes
+            gh release create "$TAG_NAME" dist/*.zip dist/*.deb dist/*.exe --title "$TAG_NAME" --generate-notes
           fi
