@@ -178,7 +178,7 @@ Desktop, standalone Web, and TUI write daily runtime log files without using the
 
 All enabled `trace`, `debug`, `info`, `warn`, and `error` events go to these files. Set `RUST_LOG` to enable a more verbose filter, for example `RUST_LOG=trace`. When stderr is a terminal, only `error` events are also written there.
 
-Standalone Web continues to accept `LOGMANCER_LOG_FILE`. When it is an absolute or relative path with a parent directory, the rotating Web logs are written directly there using its file name as the prefix (for example, `/path/name.log` produces `/path/name.log.DATE`). Use a directory dedicated to Logmancer logs for this override: the seven-file retention selects files by the configured prefix, not necessarily `logmancer-*`, and does not require a `.log` extension or date suffix for matching. Existing logs in the former `logmancer-logs` subdirectory are not moved or removed automatically.
+Standalone Web continues to accept `LOGMANCER_LOG_FILE`. When it is an absolute or relative path with a parent directory, the rotating Web logs are written directly there with the date before the extension (for example, `/path/name.log` produces `/path/name.YYYY-MM-DD.log`; a name without an extension produces `name.YYYY-MM-DD`). Desktop and TUI likewise write `logmancer-desktop.YYYY-MM-DD.log` and `logmancer-tui.YYYY-MM-DD.log`. Use a directory dedicated to Logmancer logs for this override: the seven-file retention (including the active file) selects files by the configured prefix and suffix, not necessarily `logmancer-*`, and does not validate the date in between. Existing logs in the former `logmancer-logs` subdirectory and files named `name.log.YYYY-MM-DD` are not moved or removed automatically.
 
 ---
 

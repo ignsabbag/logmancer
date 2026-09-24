@@ -18,6 +18,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- Daily runtime logs now place the date before the file extension; existing logs in the previous format are left untouched.
 - The launcher, installed Desktop, and standalone Web now resolve bundled Leptos runtime defaults and generated `site/` assets without requiring `LEPTOS_SITE_ROOT`; explicit overrides remain authoritative, and Desktop bundle assets are generated only during packaging.
 - Runtime logs now identify each resolved parameter's source without logging its value.
 

@@ -33,9 +33,19 @@ pub fn init_file_logging_with_name(
 
     std::fs::create_dir_all(directory)?;
 
-    let file_appender = tracing_appender::rolling::RollingFileAppender::builder()
+    let (prefix, suffix) = match file_name.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() && !extension.is_empty() => {
+            (stem, Some(extension))
+        }
+        _ => (file_name, None),
+    };
+    let mut builder = tracing_appender::rolling::RollingFileAppender::builder()
         .rotation(tracing_appender::rolling::Rotation::DAILY)
-        .filename_prefix(file_name)
+        .filename_prefix(prefix);
+    if let Some(suffix) = suffix {
+        builder = builder.filename_suffix(suffix);
+    }
+    let file_appender = builder
         .max_log_files(MAX_LOG_FILES)
         .build(directory)
         .map_err(io::Error::other)?;
