@@ -23,6 +23,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Fixed
 
+- Visual-rules persistence failures now include operation and path diagnostics in runtime logs while API responses remain safe and actionable.
 - When launched from Explorer, the Windows Desktop launcher now starts Desktop before closing its own console, preserving startup errors while terminals used to launch Logmancer remain attached.
 - Packaged Desktop and Web now accept complete SSR asset trees without requiring a static `index.html`.
 - Persisted reader restoration now reports actionable missing-file and authorization failures instead of treating them as unopened files.

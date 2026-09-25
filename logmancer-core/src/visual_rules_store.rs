@@ -1,7 +1,11 @@
 #![cfg(feature = "native-persistence")]
 
-use crate::config_lock::with_config_file_lock;
+use crate::config_lock::with_config_file_lock_reconciled;
 use crate::models::visual_rules::VisualRulesEnvelope;
+use crate::visual_rules_io::{
+    VisualRulesIoError, VisualRulesPersistenceStage, committed_io_warning, contextual_io_error,
+    source_conflict_error,
+};
 use atomic_write_file::AtomicWriteFile;
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
@@ -24,6 +28,17 @@ pub enum StoreCommit {
 impl StoreCommit {
     pub fn with_warning(message: impl Into<String>) -> Self {
         Self::CommittedWithWarning(message.into())
+    }
+
+    fn committed_with_io_warning(
+        default_stage: VisualRulesPersistenceStage,
+        default_path: &Path,
+        error: io::Error,
+    ) -> io::Error {
+        committed_io_warning(
+            Self::Committed,
+            VisualRulesIoError::from_context(default_stage, default_path, error),
+        )
     }
 }
 
@@ -65,13 +80,22 @@ impl VisualRulesStore for NativeVisualRulesStore {
         let mut file = match File::open(&self.path) {
             Ok(file) => file,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(error) => return Err(error),
+            Err(error) => {
+                return Err(contextual_io_error(
+                    VisualRulesPersistenceStage::SourceOpen,
+                    &self.path,
+                    error,
+                ));
+            }
         };
         let read_limit = VisualRulesEnvelope::MAX_PERSISTED_SIZE + 1;
         let mut bytes = Vec::with_capacity(read_limit);
         (&mut file)
             .take(read_limit as u64)
-            .read_to_end(&mut bytes)?;
+            .read_to_end(&mut bytes)
+            .map_err(|error| {
+                contextual_io_error(VisualRulesPersistenceStage::SourceRead, &self.path, error)
+            })?;
         if bytes.len() <= VisualRulesEnvelope::MAX_PERSISTED_SIZE {
             return Ok(Some(bytes));
         }
@@ -81,7 +105,9 @@ impl VisualRulesStore for NativeVisualRulesStore {
         let mut total_len = bytes.len() as u64;
         let mut buffer = [0_u8; 8192];
         loop {
-            let read = file.read(&mut buffer)?;
+            let read = file.read(&mut buffer).map_err(|error| {
+                contextual_io_error(VisualRulesPersistenceStage::SourceRead, &self.path, error)
+            })?;
             if read == 0 {
                 break;
             }
@@ -113,12 +139,9 @@ impl VisualRulesStore for NativeVisualRulesStore {
         bytes: &[u8],
         replace: bool,
     ) -> io::Result<StoreCommit> {
-        with_config_file_lock(&self.path, || {
+        with_config_file_lock_reconciled(&self.path, || {
             if self.read()?.as_deref() != expected {
-                return Err(io::Error::new(
-                    io::ErrorKind::AlreadyExists,
-                    "visual rules source changed before publication",
-                ));
+                return Err(source_conflict_error(&self.path));
             }
             if replace {
                 self.replace(bytes)
@@ -136,23 +159,33 @@ impl AtomicFileReplacer for NativeAtomicFileReplacer {
     #[cfg(unix)]
     fn save_new(&self, path: &Path, bytes: &[u8]) -> io::Result<StoreCommit> {
         let temporary_path = temporary_path(path);
-        let mut temporary = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary_path)?;
-        temporary.write_all(bytes)?;
-        temporary.sync_all()?;
+        let temporary = write_temporary_file(&temporary_path, bytes)?;
         drop(temporary);
 
         if let Err(error) = fs::hard_link(&temporary_path, path) {
             let _ = fs::remove_file(&temporary_path);
-            return Err(error);
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                return Err(source_conflict_error(path));
+            }
+            return Err(contextual_io_error(
+                VisualRulesPersistenceStage::AtomicCommit,
+                path,
+                error,
+            ));
         }
 
-        let cleanup = fs::remove_file(&temporary_path).and_then(|_| sync_parent(path));
+        let cleanup = fs::remove_file(&temporary_path)
+            .map_err(|error| {
+                contextual_io_error(VisualRulesPersistenceStage::Cleanup, &temporary_path, error)
+            })
+            .and_then(|_| sync_parent(path));
         match cleanup {
             Ok(()) => Ok(StoreCommit::Committed),
-            Err(error) => Ok(StoreCommit::with_warning(error.to_string())),
+            Err(error) => Err(StoreCommit::committed_with_io_warning(
+                VisualRulesPersistenceStage::Cleanup,
+                &temporary_path,
+                error,
+            )),
         }
     }
 
@@ -162,12 +195,7 @@ impl AtomicFileReplacer for NativeAtomicFileReplacer {
         use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_WRITE_THROUGH, MoveFileExW};
 
         let temporary_path = temporary_path(path);
-        let mut temporary = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary_path)?;
-        temporary.write_all(bytes)?;
-        temporary.sync_all()?;
+        let temporary = write_temporary_file(&temporary_path, bytes)?;
         drop(temporary);
 
         let source: Vec<u16> = temporary_path
@@ -179,35 +207,98 @@ impl AtomicFileReplacer for NativeAtomicFileReplacer {
         if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) } == 0 {
             let error = io::Error::last_os_error();
             let _ = fs::remove_file(&temporary_path);
-            return Err(error);
+            if error.kind() == io::ErrorKind::AlreadyExists {
+                return Err(source_conflict_error(path));
+            }
+            return Err(contextual_io_error(
+                VisualRulesPersistenceStage::AtomicCommit,
+                path,
+                error,
+            ));
         }
         Ok(StoreCommit::Committed)
     }
 
     #[cfg(not(any(unix, windows)))]
-    fn save_new(&self, _path: &Path, _bytes: &[u8]) -> io::Result<StoreCommit> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "native first-save unsupported",
+    fn save_new(&self, path: &Path, _bytes: &[u8]) -> io::Result<StoreCommit> {
+        Err(contextual_io_error(
+            VisualRulesPersistenceStage::AtomicCommit,
+            path,
+            io::Error::new(io::ErrorKind::Unsupported, "native first-save unsupported"),
         ))
     }
 
     fn replace(&self, path: &Path, bytes: &[u8]) -> io::Result<StoreCommit> {
-        let backup = timestamped_backup_path(path)?;
-        fs::copy(path, &backup)?;
-        File::open(&backup)?.sync_all()?;
+        let backup = timestamped_backup_path(path).map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::BackupPath, path, error)
+        })?;
+        fs::copy(path, &backup).map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::BackupCopy, &backup, error)
+        })?;
+        File::open(&backup)
+            .map_err(|error| {
+                contextual_io_error(VisualRulesPersistenceStage::BackupOpen, &backup, error)
+            })?
+            .sync_all()
+            .map_err(|error| {
+                contextual_io_error(VisualRulesPersistenceStage::BackupSync, &backup, error)
+            })?;
 
-        let mut file = AtomicWriteFile::options().open(path)?;
-        file.write_all(bytes)?;
-        file.commit()?;
+        let mut file = AtomicWriteFile::options().open(path).map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::TemporaryOpen, path, error)
+        })?;
+        file.write_all(bytes).map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::TemporaryWrite, path, error)
+        })?;
+        file.sync_all().map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::TemporarySync, path, error)
+        })?;
+        file.commit().map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::AtomicCommit, path, error)
+        })?;
         let sync_result = sync_parent(path);
         // Retention is best-effort: a cleanup failure must not undo a committed update.
-        let _ = prune_backups(path);
-        match sync_result {
-            Ok(()) => Ok(StoreCommit::Committed),
-            Err(error) => Ok(StoreCommit::with_warning(error.to_string())),
+        let cleanup_result = prune_backups(path);
+        match (sync_result, cleanup_result) {
+            (Ok(()), Ok(())) => Ok(StoreCommit::Committed),
+            (Err(error), _) => Err(StoreCommit::committed_with_io_warning(
+                VisualRulesPersistenceStage::ParentSync,
+                path.parent().unwrap_or_else(|| Path::new(".")),
+                error,
+            )),
+            (Ok(()), Err(error)) => Err(StoreCommit::committed_with_io_warning(
+                VisualRulesPersistenceStage::Cleanup,
+                path.parent().unwrap_or_else(|| Path::new(".")),
+                error,
+            )),
         }
     }
+}
+
+fn write_temporary_file(path: &Path, bytes: &[u8]) -> io::Result<File> {
+    let mut temporary = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::TemporaryOpen, path, error)
+        })?;
+    let write_result = temporary
+        .write_all(bytes)
+        .map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::TemporaryWrite, path, error)
+        })
+        .and_then(|_| {
+            temporary.sync_all().map_err(|error| {
+                contextual_io_error(VisualRulesPersistenceStage::TemporarySync, path, error)
+            })
+        });
+    if let Err(error) = write_result {
+        drop(temporary);
+        let _ = fs::remove_file(path);
+        return Err(error);
+    }
+    Ok(temporary)
 }
 
 fn temporary_path(path: &Path) -> PathBuf {
@@ -240,8 +331,12 @@ fn prune_backups(path: &Path) -> io::Result<()> {
     let prefix = format!("{stem}.");
     let mut backups = Vec::new();
 
-    for entry in fs::read_dir(parent)? {
-        let entry = entry?;
+    for entry in fs::read_dir(parent)
+        .map_err(|error| contextual_io_error(VisualRulesPersistenceStage::Cleanup, parent, error))?
+    {
+        let entry = entry.map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::Cleanup, parent, error)
+        })?;
         let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
             continue;
         };
@@ -258,14 +353,24 @@ fn prune_backups(path: &Path) -> io::Result<()> {
     backups.sort_unstable_by_key(|(timestamp, _)| *timestamp);
     let expired = backups.len().saturating_sub(MAX_RETAINED_BACKUPS);
     for (_, backup) in backups.into_iter().take(expired) {
-        fs::remove_file(backup)?;
+        fs::remove_file(&backup).map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::Cleanup, &backup, error)
+        })?;
     }
     Ok(())
 }
 
 #[cfg(unix)]
 fn sync_parent(path: &Path) -> io::Result<()> {
-    File::open(path.parent().unwrap_or_else(|| Path::new(".")))?.sync_all()
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    File::open(parent)
+        .map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::ParentSync, parent, error)
+        })?
+        .sync_all()
+        .map_err(|error| {
+            contextual_io_error(VisualRulesPersistenceStage::ParentSync, parent, error)
+        })
 }
 
 #[cfg(not(unix))]

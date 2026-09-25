@@ -13,6 +13,7 @@ mod recent_files;
 mod registry;
 mod timing;
 mod visual_rules;
+mod visual_rules_io;
 mod visual_rules_manager;
 #[cfg(feature = "native-persistence")]
 mod visual_rules_store;
@@ -34,6 +35,7 @@ pub use reader::LogReader;
 pub use recent_files::{MAX_RECENT_FILES, RecentFile, RecentFilesEnvelope, RecentFilesManager};
 pub use registry::{FileOpenPolicy, LogRegistry, LogRegistryBuilder, RetentionPolicy};
 pub use visual_rules::VisualRuleEvaluator;
+pub use visual_rules_io::{VisualRulesIoError, VisualRulesPersistenceStage};
 pub use visual_rules_manager::{
     SaveOutcome, SaveResult, VisualRulesError, VisualRulesManager, VisualRulesState,
 };

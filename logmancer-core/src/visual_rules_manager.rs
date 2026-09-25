@@ -1,5 +1,12 @@
+use crate::VisualRulesIoError;
+#[cfg(feature = "native-persistence")]
+use crate::VisualRulesPersistenceStage;
 use crate::models::visual_rules::{ValidationDiagnostic, VisualRulesEnvelope};
 use crate::visual_rules::VisualRuleEvaluator;
+#[cfg(feature = "native-persistence")]
+use crate::visual_rules_io::into_committed_io_warning;
+#[cfg(feature = "native-persistence")]
+use crate::visual_rules_io::is_source_conflict;
 #[cfg(feature = "native-persistence")]
 use crate::visual_rules_store::{StoreCommit, VisualRulesStore};
 use std::sync::{Arc, Mutex, RwLock};
@@ -24,14 +31,21 @@ pub struct VisualRulesState {
 pub struct SaveResult {
     pub revision: u64,
     pub outcome: SaveOutcome,
+    io_warning: Option<VisualRulesIoError>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+impl SaveResult {
+    pub fn io_warning(&self) -> Option<&VisualRulesIoError> {
+        self.io_warning.as_ref()
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum VisualRulesError {
     Validation(String),
     RevisionConflict,
     SourceConflict,
-    Io(String),
+    Io(VisualRulesIoError),
     Decode(String),
 }
 
@@ -42,7 +56,34 @@ impl VisualRulesError {
     pub fn is_io(&self) -> bool {
         matches!(self, Self::Io(_))
     }
+
+    pub fn io_error(&self) -> Option<&VisualRulesIoError> {
+        match self {
+            Self::Io(error) => Some(error),
+            _ => None,
+        }
+    }
 }
+
+impl PartialEq for VisualRulesError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Validation(left), Self::Validation(right))
+            | (Self::Decode(left), Self::Decode(right)) => left == right,
+            (Self::RevisionConflict, Self::RevisionConflict)
+            | (Self::SourceConflict, Self::SourceConflict) => true,
+            (Self::Io(left), Self::Io(right)) => {
+                left.stage() == right.stage()
+                    && left.path() == right.path()
+                    && left.kind() == right.kind()
+                    && left.raw_os_error() == right.raw_os_error()
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Eq for VisualRulesError {}
 
 impl std::fmt::Display for VisualRulesError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -50,7 +91,14 @@ impl std::fmt::Display for VisualRulesError {
     }
 }
 
-impl std::error::Error for VisualRulesError {}
+impl std::error::Error for VisualRulesError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Io(error) => Some(error),
+            _ => None,
+        }
+    }
+}
 
 struct ManagerState {
     revision: u64,
@@ -127,6 +175,7 @@ impl VisualRulesManager {
         Ok(SaveResult {
             revision: state.revision,
             outcome: SaveOutcome::Committed,
+            io_warning: None,
         })
     }
 
@@ -138,7 +187,13 @@ impl VisualRulesManager {
             .as_ref()
             .expect("native store")
             .read()
-            .map_err(io_error)?;
+            .map_err(|error| {
+                VisualRulesError::Io(VisualRulesIoError::from_context(
+                    VisualRulesPersistenceStage::SourceRead,
+                    std::path::Path::new("visual-rules.json"),
+                    error,
+                ))
+            })?;
         if source
             .as_ref()
             .is_some_and(|bytes| bytes.len() > VisualRulesEnvelope::MAX_PERSISTED_SIZE)
@@ -244,15 +299,23 @@ impl VisualRulesManager {
         }
         let replace = replace.unwrap_or(state.source.is_some());
         let store = self.store.as_ref().expect("native store");
-        let commit = store
-            .compare_and_commit(state.source.as_deref(), &bytes, replace)
-            .map_err(|error| {
-                if error.kind() == std::io::ErrorKind::AlreadyExists {
-                    VisualRulesError::SourceConflict
-                } else {
-                    io_error(error)
-                }
-            })?;
+        let (commit, io_warning) =
+            match store.compare_and_commit(state.source.as_deref(), &bytes, replace) {
+                Ok(commit) => (commit, None),
+                Err(error) => match into_committed_io_warning(error) {
+                    Ok((commit, warning)) => (commit, Some(warning)),
+                    Err(error) if is_source_conflict(&error) => {
+                        return Err(VisualRulesError::SourceConflict);
+                    }
+                    Err(error) => {
+                        return Err(VisualRulesError::Io(VisualRulesIoError::from_context(
+                            VisualRulesPersistenceStage::AtomicCommit,
+                            std::path::Path::new("visual-rules.json"),
+                            error,
+                        )));
+                    }
+                },
+            };
         self.publish(
             &mut state,
             envelope,
@@ -260,14 +323,20 @@ impl VisualRulesManager {
             report.diagnostics,
             Some(bytes),
         );
+        let outcome = match (commit, io_warning.as_ref()) {
+            (StoreCommit::Committed, None) => SaveOutcome::Committed,
+            (StoreCommit::CommittedWithWarning(message), _) => {
+                SaveOutcome::CommittedWithWarning(message)
+            }
+            (StoreCommit::Committed, Some(_)) => SaveOutcome::CommittedWithWarning(
+                    "Visual rules were saved, but a post-save filesystem operation failed. Check the application logs for details."
+                        .to_string(),
+            ),
+        };
         Ok(SaveResult {
             revision: state.revision,
-            outcome: match commit {
-                StoreCommit::Committed => SaveOutcome::Committed,
-                StoreCommit::CommittedWithWarning(message) => {
-                    SaveOutcome::CommittedWithWarning(message)
-                }
-            },
+            outcome,
+            io_warning,
         })
     }
 
@@ -288,11 +357,6 @@ impl VisualRulesManager {
     }
 }
 
-#[cfg(feature = "native-persistence")]
-fn io_error(error: std::io::Error) -> VisualRulesError {
-    VisualRulesError::Io(error.to_string())
-}
-
 #[cfg(all(test, feature = "native-persistence"))]
 mod tests {
     use super::*;
@@ -309,6 +373,43 @@ mod tests {
         read_captured: Sender<()>,
         release_read: Mutex<Receiver<()>>,
         commit_finished: Sender<()>,
+    }
+
+    struct CommittedThenWarnStore {
+        bytes: Mutex<Option<Vec<u8>>>,
+    }
+
+    impl VisualRulesStore for CommittedThenWarnStore {
+        fn read(&self) -> std::io::Result<Option<Vec<u8>>> {
+            Ok(self.bytes.lock().expect("store lock").clone())
+        }
+
+        fn save_new(&self, _bytes: &[u8]) -> std::io::Result<StoreCommit> {
+            unreachable!("compare_and_commit owns the test publication")
+        }
+
+        fn replace(&self, _bytes: &[u8]) -> std::io::Result<StoreCommit> {
+            unreachable!("compare_and_commit owns the test publication")
+        }
+
+        fn compare_and_commit(
+            &self,
+            expected: Option<&[u8]>,
+            bytes: &[u8],
+            _replace: bool,
+        ) -> std::io::Result<StoreCommit> {
+            let mut stored = self.bytes.lock().expect("store lock");
+            assert_eq!(stored.as_deref(), expected);
+            *stored = Some(bytes.to_vec());
+            Err(crate::visual_rules_io::committed_io_warning(
+                StoreCommit::Committed,
+                VisualRulesIoError::new(
+                    VisualRulesPersistenceStage::Unlock,
+                    "visual-rules.json.lock",
+                    std::io::Error::from_raw_os_error(5),
+                ),
+            ))
+        }
     }
 
     impl VisualRulesStore for PausingReadStore {
@@ -435,6 +536,39 @@ mod tests {
             std::str::from_utf8(&persisted)
                 .expect("persisted rules are UTF-8 JSON")
                 .contains("\n  \"schemaVersion\"")
+        );
+    }
+
+    #[test]
+    fn post_commit_unlock_failure_publishes_once_and_returns_io_warning() {
+        let store = Arc::new(CommittedThenWarnStore {
+            bytes: Mutex::new(None),
+        });
+        let manager = VisualRulesManager::with_store(store.clone());
+        let saved_envelope = envelope("WARN");
+
+        let result = manager
+            .save(0, saved_envelope.clone())
+            .expect("the file was committed before unlock failed");
+
+        assert_eq!(result.revision, 1);
+        assert!(matches!(
+            result.outcome,
+            SaveOutcome::CommittedWithWarning(_)
+        ));
+        let warning = result.io_warning().expect("structured I/O warning");
+        assert_eq!(warning.stage(), VisualRulesPersistenceStage::Unlock);
+        assert_eq!(warning.raw_os_error(), Some(5));
+        assert_eq!(manager.state().revision, 1);
+        assert_eq!(manager.state().envelope, saved_envelope);
+        assert!(manager.snapshot().evaluate("WARN").is_some());
+        assert_eq!(
+            store.bytes.lock().expect("store lock").as_deref(),
+            Some(
+                serde_json::to_vec_pretty(&manager.state().envelope)
+                    .expect("serialize published envelope")
+                    .as_slice()
+            )
         );
     }
 }
