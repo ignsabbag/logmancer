@@ -1,6 +1,7 @@
 #![recursion_limit = "256"]
 
-use logmancer_core::LogRegistry;
+use logmancer_core::{LogRegistry, init_file_logging};
+use std::io::IsTerminal;
 #[cfg(any(feature = "embedded-server", test))]
 use std::net::SocketAddr;
 use std::net::{TcpStream, ToSocketAddrs};
@@ -422,13 +423,10 @@ mod tests {
     }
 }
 
-fn init_desktop_logging() {
-    let env_filter = tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info,logmancer_desktop=debug"));
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(env_filter)
-        .with_target(false)
-        .try_init();
+fn init_desktop_logging(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let directory = app.path().app_log_dir()?;
+    init_file_logging(&directory, "desktop", std::io::stderr().is_terminal())?;
+    Ok(())
 }
 
 #[cfg(feature = "embedded-server")]
@@ -445,12 +443,7 @@ fn wait_for_embedded_server(port: u16) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    init_desktop_logging();
     let initial_path = std::env::args().nth(1);
-    info!(
-        initial_file_provided = initial_path.is_some(),
-        "Resolved desktop initial file argument"
-    );
 
     let builder = tauri::Builder::default()
         .manage(DesktopState {
@@ -462,6 +455,11 @@ pub fn run() {
 
     #[cfg(feature = "embedded-server")]
     let builder = builder.setup(move |app| {
+        init_desktop_logging(app)?;
+        info!(
+            initial_file_provided = initial_path.is_some(),
+            "Resolved desktop initial file argument"
+        );
         enable_desktop_ssr_runtime();
         info!("Desktop runtime configured for embedded SSR rendering");
 
@@ -531,6 +529,11 @@ pub fn run() {
 
     #[cfg(not(feature = "embedded-server"))]
     let builder = builder.setup(move |app| {
+        init_desktop_logging(app)?;
+        info!(
+            initial_file_provided = initial_path.is_some(),
+            "Resolved desktop initial file argument"
+        );
         let window = app.get_webview_window("main").unwrap();
         if wait_for_external_dev_server() {
             info!(

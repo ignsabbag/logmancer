@@ -4,7 +4,6 @@
 #[tokio::main]
 async fn main() {
     use leptos::prelude::*;
-    use logmancer_web::init_backend_logging;
     use logmancer_web::runtime_parameter::{
         resolve_runtime_parameter_source, LEPTOS_OUTPUT_NAME_SOURCE_ENV,
     };
@@ -12,7 +11,10 @@ async fn main() {
     use std::process;
     use tracing::info;
 
-    init_backend_logging();
+    if let Err(error) = logmancer_web::initialize_web_file_logging() {
+        eprintln!("{error}");
+        process::exit(1);
+    }
 
     let conf = get_configuration(None).unwrap();
     let arguments = std::env::args_os().skip(1).collect::<Vec<_>>();

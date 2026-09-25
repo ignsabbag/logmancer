@@ -8,6 +8,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Added
 
+- Desktop, standalone Web, and TUI now write daily runtime logs to per-user directories on Linux and Windows, retain up to seven files per variant, and mirror errors to an attached terminal.
+
 - Linux releases now include a DEB package that installs the complete suite, generated web assets, desktop-menu entry, and public commands.
 - Windows build artifacts now include a per-user NSIS installer containing Desktop, the launcher, standalone Web and TUI executables, and generated `site/` resources; the installer also registers `.log` files for opening with Logmancer Desktop.
 - Logmancer now ships a public `logmancer` launcher that defaults to Desktop on Windows and selects Desktop or TUI from the current Linux session; Web and all explicit variant commands remain available.
@@ -16,6 +18,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- Daily runtime logs now place the date before the file extension; existing logs in the previous format are left untouched.
 - The launcher, installed Desktop, and standalone Web now resolve bundled Leptos runtime defaults and generated `site/` assets without requiring `LEPTOS_SITE_ROOT`; explicit overrides remain authoritative, and Desktop bundle assets are generated only during packaging.
 - Runtime logs now identify each resolved parameter's source without logging its value.
 

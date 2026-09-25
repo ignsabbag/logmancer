@@ -169,6 +169,17 @@ No additional configuration is required. The web server supports these optional 
 
 The launcher supplies its bundled Leptos assets to Desktop and Web only when `LEPTOS_OUTPUT_NAME` and `LEPTOS_SITE_ROOT` are unset or empty. Explicit values remain unchanged; TUI receives no Leptos runtime defaults.
 
+### Runtime logs
+
+Desktop, standalone Web, and TUI write daily runtime log files without using the current working directory. Files are named per variant (`logmancer-desktop.log`, `logmancer-web.log`, and `logmancer-tui.log`) with a date suffix. At most seven matching log files are retained in total, including the active file.
+
+* Desktop uses Tauri's per-user application log directory for `com.ignsabbag.logmancer`: on Linux, `$XDG_DATA_HOME/com.ignsabbag.logmancer/logs` (or `~/.local/share/com.ignsabbag.logmancer/logs`); on Windows, `%LOCALAPPDATA%\com.ignsabbag.logmancer\logs`. Tauri's resolved path already ends in `logs`.
+* Standalone Web and TUI use the Logmancer local data directory's `logs` child: on Linux, `$XDG_DATA_HOME/logmancer/logs` (or `~/.local/share/logmancer/logs`); on Windows, `%LOCALAPPDATA%\ignsabbag\Logmancer\data\logs`.
+
+All enabled `trace`, `debug`, `info`, `warn`, and `error` events go to these files. Set `RUST_LOG` to enable a more verbose filter, for example `RUST_LOG=trace`. When stderr is a terminal, only `error` events are also written there.
+
+Standalone Web continues to accept `LOGMANCER_LOG_FILE`. When it is an absolute or relative path with a parent directory, the rotating Web logs are written directly there with the date before the extension (for example, `/path/name.log` produces `/path/name.YYYY-MM-DD.log`; a name without an extension produces `name.YYYY-MM-DD`). Desktop and TUI likewise write `logmancer-desktop.YYYY-MM-DD.log` and `logmancer-tui.YYYY-MM-DD.log`. Use a directory dedicated to Logmancer logs for this override: the seven-file retention (including the active file) selects files by the configured prefix and suffix, not necessarily `logmancer-*`, and does not validate the date in between. Existing logs in the former `logmancer-logs` subdirectory and files named `name.log.YYYY-MM-DD` are not moved or removed automatically.
+
 ---
 
 ## Roadmap

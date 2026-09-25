@@ -14,10 +14,15 @@ serde = { version = "1.0.219", features = ["derive"] }
 serde_json = { version = "1.0.145", optional = true }
 atomic-write-file = { version = "0.3.0", optional = true }
 sha2 = { version = "0.10.9", optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-appender = { version = "0.2", optional = true }
+tracing-log = { version = "0.2", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"], optional = true }
 
 [features]
 wasm = ["uuid/js"]
 native-persistence = ["dep:atomic-write-file", "dep:serde_json", "dep:sha2", "dep:windows-sys"]
+native-logging = ["dep:tracing", "dep:tracing-appender", "dep:tracing-log", "dep:tracing-subscriber"]
 
 [dev-dependencies]
 tempfile = "3"

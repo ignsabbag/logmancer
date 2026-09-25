@@ -35,6 +35,167 @@ pub enum ConfigurationSource {
 }
 
 #[cfg(feature = "ssr")]
+pub fn web_log_target(
+    configured_file: Option<std::path::PathBuf>,
+    default_directory: std::path::PathBuf,
+) -> Result<(std::path::PathBuf, String), String> {
+    match configured_file {
+        Some(path) => {
+            let directory = path
+                .parent()
+                .filter(|directory| !directory.as_os_str().is_empty())
+                .ok_or_else(|| "LOGMANCER_LOG_FILE must include a parent directory".to_string())?;
+            let file_name = path
+                .file_name()
+                .and_then(|file_name| file_name.to_str())
+                .filter(|file_name| !file_name.is_empty())
+                .ok_or_else(|| "LOGMANCER_LOG_FILE must include a file name".to_string())?;
+            Ok((directory.to_path_buf(), file_name.to_owned()))
+        }
+        None => Ok((default_directory, "logmancer-web.log".to_string())),
+    }
+}
+
+#[cfg(feature = "ssr")]
+pub fn initialize_web_file_logging() -> Result<(), String> {
+    use std::io::IsTerminal;
+
+    let default_directory = directories::ProjectDirs::from("dev", "ignsabbag", "Logmancer")
+        .map(|directories| directories.data_local_dir().join("logs"))
+        .ok_or_else(|| "could not resolve the user data directory".to_string())?;
+    let configured_file = std::env::var_os("LOGMANCER_LOG_FILE")
+        .filter(|path| !path.to_string_lossy().trim().is_empty())
+        .map(std::path::PathBuf::from);
+
+    initialize_web_file_logging_at(
+        configured_file,
+        default_directory,
+        std::io::stderr().is_terminal(),
+    )
+}
+
+#[cfg(feature = "ssr")]
+fn initialize_web_file_logging_at(
+    configured_file: Option<std::path::PathBuf>,
+    default_directory: std::path::PathBuf,
+    stderr_is_terminal: bool,
+) -> Result<(), String> {
+    let (log_directory, log_file_name) = web_log_target(configured_file, default_directory)?;
+    logmancer_core::init_file_logging_with_name(&log_directory, &log_file_name, stderr_is_terminal)
+        .map_err(|error| format!("Could not initialize file logging: {error}"))
+}
+
+#[cfg(all(test, feature = "ssr"))]
+mod logging_tests {
+    use super::{initialize_web_file_logging_at, web_log_target};
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    const CHILD_TEST_ENV: &str = "LOGMANCER_WEB_LOGGING_CHILD_TEST";
+
+    fn run_in_child(test_name: &str) {
+        if std::env::var_os(CHILD_TEST_ENV).is_some() {
+            return;
+        }
+
+        let status = Command::new(std::env::current_exe().unwrap())
+            .arg("--exact")
+            .arg(test_name)
+            .arg("--nocapture")
+            .env(CHILD_TEST_ENV, "1")
+            .status()
+            .unwrap();
+
+        assert!(status.success());
+    }
+
+    #[test]
+    fn configured_log_file_keeps_its_directory_and_name() {
+        let configured_file = PathBuf::from("/custom/logs/web.log");
+
+        let target = web_log_target(Some(configured_file), PathBuf::from("/default/logs")).unwrap();
+
+        assert_eq!(
+            target,
+            (PathBuf::from("/custom/logs"), "web.log".to_string())
+        );
+    }
+
+    #[test]
+    fn default_log_target_uses_the_variant_file_name() {
+        let target = web_log_target(None, PathBuf::from("/default/logs")).unwrap();
+
+        assert_eq!(
+            target,
+            (
+                PathBuf::from("/default/logs"),
+                "logmancer-web.log".to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn configured_log_file_is_written_in_its_parent_directory() {
+        if std::env::var_os(CHILD_TEST_ENV).is_none() {
+            run_in_child("logging_tests::configured_log_file_is_written_in_its_parent_directory");
+            return;
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let configured_file = directory.path().join("custom.log");
+        let unrelated_file = directory.path().join("custom.log.unrelated");
+        let legacy_file = directory.path().join("custom.log.2026-09-22");
+        std::fs::write(&unrelated_file, "do not remove").unwrap();
+        std::fs::write(&legacy_file, "old format").unwrap();
+
+        initialize_web_file_logging_at(
+            Some(configured_file),
+            directory.path().join("default"),
+            false,
+        )
+        .unwrap();
+
+        assert!(unrelated_file.exists());
+        assert!(legacy_file.exists());
+        assert!(std::fs::read_dir(directory.path()).unwrap().any(|entry| {
+            let name = entry.unwrap().file_name().into_string().unwrap();
+            let Some(date) = name
+                .strip_prefix("custom.")
+                .and_then(|name| name.strip_suffix(".log"))
+            else {
+                return false;
+            };
+            let bytes = date.as_bytes();
+            bytes.len() == 10
+                && bytes.iter().enumerate().all(|(index, byte)| {
+                    if index == 4 || index == 7 {
+                        *byte == b'-'
+                    } else {
+                        byte.is_ascii_digit()
+                    }
+                })
+        }));
+        assert!(!directory.path().join("logmancer-logs").exists());
+    }
+
+    #[test]
+    fn web_logging_reports_invalid_directories() {
+        if std::env::var_os(CHILD_TEST_ENV).is_none() {
+            run_in_child("logging_tests::web_logging_reports_invalid_directories");
+            return;
+        }
+
+        let directory = tempfile::tempdir().unwrap();
+        let invalid_directory = directory.path().join("not-a-directory");
+        std::fs::write(&invalid_directory, "blocked").unwrap();
+
+        let error = initialize_web_file_logging_at(None, invalid_directory, false).unwrap_err();
+
+        assert!(error.starts_with("Could not initialize file logging:"));
+    }
+}
+
+#[cfg(feature = "ssr")]
 impl std::fmt::Display for ConfigurationSource {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
@@ -494,6 +655,10 @@ pub async fn start_leptos(addr: std::net::SocketAddr) {
     use logmancer_core::FileOpenPolicy;
     use std::sync::Arc;
 
+    if let Err(error) = initialize_web_file_logging() {
+        eprintln!("{error}");
+    }
+
     let file_open_policy = ServerFileRoot::from_env()
         .map(|root| Arc::new(SsrFileOpenPolicy::new(root)) as Arc<dyn FileOpenPolicy>);
     let registry = registry_runtime(config_directory_from_env(), file_open_policy);
@@ -505,6 +670,8 @@ pub async fn start_leptos_with_options(options: WebServerOptions) -> Result<(), 
     use crate::api::server_browser::{ServerFileRoot, SsrFileOpenPolicy};
     use logmancer_core::FileOpenPolicy;
     use std::sync::Arc;
+
+    initialize_web_file_logging()?;
 
     let file_root = options
         .file_root
@@ -558,8 +725,6 @@ async fn start_leptos_with_registry_inner(
     use leptos_axum::{generate_route_list, LeptosRoutes};
     use tracing::info;
 
-    init_backend_logging();
-
     let conf = get_configuration(None).unwrap();
     let mut leptos_options = conf.leptos_options;
     let configured_site_root = std::env::var_os("LEPTOS_SITE_ROOT");
@@ -611,7 +776,10 @@ pub async fn start_axum(port: u16) {
     use crate::api::config::api_routes_with_registry;
     use tracing::info;
 
-    init_backend_logging();
+    if let Err(error) = initialize_web_file_logging() {
+        eprintln!("{error}");
+    }
+
     let addr = web_bind_addr(port)
         .unwrap_or_else(|error| panic!("Invalid web server configuration: {error}"));
 
@@ -661,48 +829,4 @@ pub fn try_open_initial_file(
             None
         }
     }
-}
-
-#[cfg(feature = "ssr")]
-pub fn init_backend_logging() {
-    use std::path::PathBuf;
-    use std::sync::{Once, OnceLock};
-    use tracing_appender::non_blocking::WorkerGuard;
-    use tracing_subscriber::{fmt, EnvFilter};
-
-    static INIT: Once = Once::new();
-    static LOG_GUARD: OnceLock<WorkerGuard> = OnceLock::new();
-
-    INIT.call_once(|| {
-        let env_filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("info,logmancer_web=debug,logmancer_desktop=debug"));
-
-        if let Ok(log_file) = std::env::var("LOGMANCER_LOG_FILE") {
-            if !log_file.trim().is_empty() {
-                let log_path = PathBuf::from(log_file);
-                if let Some(parent) = log_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-
-                if let (Some(parent), Some(file_name)) = (log_path.parent(), log_path.file_name()) {
-                    let file_appender =
-                        tracing_appender::rolling::never(parent, PathBuf::from(file_name));
-                    let (writer, guard) = tracing_appender::non_blocking(file_appender);
-                    let _ = LOG_GUARD.set(guard);
-                    let _ = fmt()
-                        .with_env_filter(env_filter)
-                        .with_writer(writer)
-                        .with_ansi(false)
-                        .with_target(false)
-                        .try_init();
-                    return;
-                }
-            }
-        }
-
-        let _ = fmt()
-            .with_env_filter(env_filter)
-            .with_target(false)
-            .try_init();
-    });
 }
