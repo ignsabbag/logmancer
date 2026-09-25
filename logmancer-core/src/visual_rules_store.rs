@@ -235,7 +235,11 @@ impl AtomicFileReplacer for NativeAtomicFileReplacer {
         fs::copy(path, &backup).map_err(|error| {
             contextual_io_error(VisualRulesPersistenceStage::BackupCopy, &backup, error)
         })?;
-        File::open(&backup)
+        #[cfg(windows)]
+        let backup_file = OpenOptions::new().write(true).open(&backup);
+        #[cfg(not(windows))]
+        let backup_file = File::open(&backup);
+        backup_file
             .map_err(|error| {
                 contextual_io_error(VisualRulesPersistenceStage::BackupOpen, &backup, error)
             })?
@@ -381,6 +385,86 @@ fn sync_parent(_path: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn replacement_syncs_read_only_backup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().expect("create config directory");
+        let path = directory.path().join("visual-rules.json");
+        fs::write(&path, b"original visual rules").expect("write original rules");
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o444))
+            .expect("make original rules read-only");
+
+        NativeAtomicFileReplacer
+            .replace(&path, b"updated visual rules")
+            .expect("replace rules with read-only backup");
+
+        assert_eq!(
+            fs::read(&path).expect("read updated rules"),
+            b"updated visual rules"
+        );
+        let backup = fs::read_dir(directory.path())
+            .expect("list config directory")
+            .map(|entry| entry.expect("read directory entry").path())
+            .find(|entry| {
+                entry
+                    .extension()
+                    .is_some_and(|extension| extension == "bak")
+            })
+            .expect("backup exists");
+        assert_eq!(
+            fs::read(&backup).expect("read backup"),
+            b"original visual rules"
+        );
+        assert_eq!(
+            fs::metadata(&backup)
+                .expect("backup metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o444
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn replacement_syncs_backup_without_truncating_it() {
+        let directory = tempfile::tempdir().expect("create config directory");
+        let path = directory.path().join("visual-rules.json");
+        let original = b"original visual rules";
+        let replacement = b"updated visual rules";
+        fs::write(&path, original).expect("write original rules");
+
+        let result = NativeAtomicFileReplacer.replace(&path, replacement);
+        if let Err(error) = result {
+            let diagnostic = VisualRulesIoError::from_context(
+                VisualRulesPersistenceStage::AtomicCommit,
+                &path,
+                error,
+            );
+            assert_eq!(
+                diagnostic.stage(),
+                VisualRulesPersistenceStage::AtomicCommit
+            );
+            assert_eq!(fs::read(&path).expect("read original rules"), original);
+        } else {
+            assert_eq!(fs::read(&path).expect("read updated rules"), replacement);
+        }
+
+        let backups: Vec<_> = fs::read_dir(directory.path())
+            .expect("list config directory")
+            .map(|entry| entry.expect("read directory entry").path())
+            .filter(|entry| {
+                entry
+                    .extension()
+                    .is_some_and(|extension| extension == "bak")
+            })
+            .collect();
+        assert_eq!(backups.len(), 1);
+        assert_eq!(fs::read(&backups[0]).expect("read backup"), original);
+    }
 
     #[test]
     fn pruning_retains_recent_backups_without_touching_unrelated_files() {
