@@ -1,9 +1,10 @@
 #![cfg(feature = "native-persistence")]
 
 use logmancer_core::{
-    AtomicFileReplacer, LineStyleIntent, LogRegistry, ManagedVisualRule, NativeVisualRulesStore,
-    SaveOutcome, StoreCommit, ValidationSeverity, VisualColor, VisualMatcher, VisualRulesEnvelope,
-    VisualRulesError, VisualRulesManager, VisualRulesStore,
+    AtomicFileReplacer, LineStyleIntent, LogRegistry, ManagedVisualRule, NativeAtomicFileReplacer,
+    NativeVisualRulesStore, SaveOutcome, StoreCommit, ValidationSeverity, VisualColor,
+    VisualMatcher, VisualRulesEnvelope, VisualRulesError, VisualRulesIoError, VisualRulesManager,
+    VisualRulesPersistenceStage, VisualRulesStore,
 };
 use std::fs::File;
 use std::io::{BufRead, Write};
@@ -493,8 +494,15 @@ fn failed_publication_does_not_mutate_snapshot_and_warning_reconciles_commit() {
         blocked_path,
     )));
     let before = blocked.snapshot();
-    let failure = blocked.save(0, VisualRulesEnvelope::new(vec![rule("ERROR")]));
-    assert!(failure.expect_err("pre-publication write fails").is_io());
+    let failure = blocked
+        .save(0, VisualRulesEnvelope::new(vec![rule("ERROR")]))
+        .expect_err("pre-publication write fails");
+    let io_error = failure.io_error().expect("I/O diagnostic");
+    assert_eq!(io_error.stage(), VisualRulesPersistenceStage::LockOpen);
+    assert!(io_error.path().to_string_lossy().ends_with(".lock"));
+    assert_eq!(io_error.kind(), std::io::ErrorKind::NotFound);
+    assert!(io_error.raw_os_error().is_some());
+    assert!(io_error.causal_chain().contains("lock_open"));
     assert_eq!(
         blocked.snapshot().evaluate("ERROR"),
         before.evaluate("ERROR")
@@ -512,6 +520,127 @@ fn failed_publication_does_not_mutate_snapshot_and_warning_reconciles_commit() {
         Some(style(Some("red"), Some("default")))
     );
     std::fs::remove_file(path).expect("remove config");
+}
+
+#[test]
+fn visual_rules_io_error_preserves_native_code_and_source_chain() {
+    let source = std::io::Error::from_raw_os_error(5);
+    let expected_kind = source.kind();
+    let error = VisualRulesIoError::new(
+        VisualRulesPersistenceStage::BackupCopy,
+        "private/visual-rules.backup",
+        source,
+    );
+
+    assert_eq!(error.kind(), expected_kind);
+    assert_eq!(error.raw_os_error(), Some(5));
+    assert_eq!(error.stage(), VisualRulesPersistenceStage::BackupCopy);
+    assert_eq!(
+        error.path(),
+        std::path::Path::new("private/visual-rules.backup")
+    );
+    assert!(std::error::Error::source(&error).is_some());
+    assert!(error.causal_chain().contains("os error 5"));
+}
+
+#[test]
+fn public_visual_rules_results_remain_clone_and_eq() {
+    fn assert_clone_and_eq<T: Clone + Eq>() {}
+
+    assert_clone_and_eq::<logmancer_core::SaveResult>();
+    assert_clone_and_eq::<VisualRulesError>();
+    assert_clone_and_eq::<StoreCommit>();
+
+    let manager = VisualRulesManager::in_memory();
+    let result = manager
+        .apply_memory(VisualRulesEnvelope::new(Vec::new()))
+        .expect("apply visual rules in memory");
+    assert_eq!(result.clone(), result);
+
+    let error = VisualRulesError::Io(VisualRulesIoError::new(
+        VisualRulesPersistenceStage::SourceRead,
+        "visual-rules.json",
+        std::io::Error::from_raw_os_error(5),
+    ));
+    assert_eq!(error.clone(), error);
+    assert_eq!(StoreCommit::Committed.clone(), StoreCommit::Committed);
+}
+
+struct FailingReplacement;
+
+impl AtomicFileReplacer for FailingReplacement {
+    fn save_new(&self, _path: &std::path::Path, _bytes: &[u8]) -> std::io::Result<StoreCommit> {
+        unreachable!("the test replaces an existing source")
+    }
+
+    fn replace(&self, _path: &std::path::Path, _bytes: &[u8]) -> std::io::Result<StoreCommit> {
+        Err(std::io::Error::from_raw_os_error(5))
+    }
+}
+
+#[test]
+fn failed_replacement_preserves_source_snapshot_and_native_error() {
+    let path = temp_config_path("visual-rules-replacement-failure");
+    let original = serde_json::to_vec_pretty(&VisualRulesEnvelope::new(vec![rule("ERROR")]))
+        .expect("serialize original visual rules");
+    std::fs::write(&path, &original).expect("write original visual rules");
+    let manager =
+        VisualRulesManager::with_store(std::sync::Arc::new(NativeVisualRulesStore::with_replacer(
+            path.clone(),
+            std::sync::Arc::new(FailingReplacement),
+        )));
+    let initial = manager.load().expect("load original visual rules");
+    let before = manager.snapshot();
+
+    let error = manager
+        .replace(
+            initial.revision,
+            VisualRulesEnvelope::new(vec![rule("WARN")]),
+        )
+        .expect_err("replacement fails before publication");
+    let io_error = error.io_error().expect("I/O diagnostic");
+
+    assert_eq!(io_error.stage(), VisualRulesPersistenceStage::AtomicCommit);
+    assert_eq!(io_error.raw_os_error(), Some(5));
+    assert!(io_error.causal_chain().contains("os error 5"));
+    assert_eq!(std::fs::read(&path).expect("read original"), original);
+    assert_eq!(manager.state().revision, initial.revision);
+    assert_eq!(
+        manager.snapshot().evaluate("ERROR"),
+        before.evaluate("ERROR")
+    );
+    assert_eq!(manager.snapshot().evaluate("WARN"), None);
+
+    std::fs::remove_file(path).expect("remove config");
+}
+
+#[test]
+fn failed_first_save_cleans_temporary_and_preserves_existing_target() {
+    let path = temp_config_path("visual-rules-first-save-cleanup");
+    std::fs::write(&path, b"original").expect("write existing target");
+
+    let error = NativeAtomicFileReplacer
+        .save_new(&path, b"replacement")
+        .expect_err("first save must not replace an existing target");
+
+    assert_eq!(error.kind(), std::io::ErrorKind::AlreadyExists);
+    assert_eq!(std::fs::read(&path).expect("read target"), b"original");
+    let temporary_prefix = format!(
+        ".{}.",
+        path.file_name().expect("target name").to_string_lossy()
+    );
+    let temporaries: Vec<_> = std::fs::read_dir(path.parent().expect("parent"))
+        .expect("read parent")
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(&temporary_prefix)
+        })
+        .collect();
+    assert!(temporaries.is_empty());
+    std::fs::remove_file(path).expect("remove target");
 }
 
 #[test]
@@ -1059,11 +1188,9 @@ fn post_publication_warning_commits_snapshot_revision_and_source_once() {
         result.revision,
         VisualRulesEnvelope::new(vec![rule("WARN")]),
     );
-    assert!(
-        conflict
-            .expect_err("second first-save cannot clobber")
-            .is_source_conflict()
-    );
+    let error = conflict.expect_err("second first-save cannot clobber");
+    assert!(error.is_io());
+    assert!(!error.is_source_conflict());
 }
 
 struct ConcurrentCreatorStore;
@@ -1095,7 +1222,7 @@ impl VisualRulesStore for ConcurrentCreatorStore {
 }
 
 #[test]
-fn first_save_never_clobbers_a_concurrently_created_target() {
+fn generic_already_exists_is_not_misclassified_as_a_source_conflict() {
     let manager = VisualRulesManager::with_store(std::sync::Arc::new(ConcurrentCreatorStore));
     let initial = manager.load().expect("missing store loads");
     let before = manager.snapshot();
@@ -1104,11 +1231,9 @@ fn first_save_never_clobbers_a_concurrently_created_target() {
         initial.revision,
         VisualRulesEnvelope::new(vec![rule("ERROR")]),
     );
-    assert!(
-        failure
-            .expect_err("concurrent target conflicts")
-            .is_source_conflict()
-    );
+    let error = failure.expect_err("generic AlreadyExists remains an I/O failure");
+    assert!(error.is_io());
+    assert!(!error.is_source_conflict());
     assert_eq!(manager.state().revision, initial.revision);
     assert_eq!(
         manager.snapshot().evaluate("ERROR"),
