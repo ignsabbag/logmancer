@@ -144,7 +144,9 @@ mod logging_tests {
         let directory = tempfile::tempdir().unwrap();
         let configured_file = directory.path().join("custom.log");
         let unrelated_file = directory.path().join("custom.log.unrelated");
+        let legacy_file = directory.path().join("custom.log.2026-09-22");
         std::fs::write(&unrelated_file, "do not remove").unwrap();
+        std::fs::write(&legacy_file, "old format").unwrap();
 
         initialize_web_file_logging_at(
             Some(configured_file),
@@ -154,14 +156,24 @@ mod logging_tests {
         .unwrap();
 
         assert!(unrelated_file.exists());
+        assert!(legacy_file.exists());
         assert!(std::fs::read_dir(directory.path()).unwrap().any(|entry| {
-            let path = entry.unwrap().path();
-            path != unrelated_file
-                && path
-                    .file_name()
-                    .unwrap()
-                    .to_string_lossy()
-                    .starts_with("custom.log.")
+            let name = entry.unwrap().file_name().into_string().unwrap();
+            let Some(date) = name
+                .strip_prefix("custom.")
+                .and_then(|name| name.strip_suffix(".log"))
+            else {
+                return false;
+            };
+            let bytes = date.as_bytes();
+            bytes.len() == 10
+                && bytes.iter().enumerate().all(|(index, byte)| {
+                    if index == 4 || index == 7 {
+                        *byte == b'-'
+                    } else {
+                        byte.is_ascii_digit()
+                    }
+                })
         }));
         assert!(!directory.path().join("logmancer-logs").exists());
     }
