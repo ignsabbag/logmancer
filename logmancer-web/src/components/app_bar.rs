@@ -9,7 +9,7 @@ pub fn AppBar(
 ) -> impl IntoView {
     view! {
         <header class="app-bar">
-            <span class="app-bar__spacer"></span>
+            <img class="app-bar__icon" src="/favicon-32x32.png" width="22" height="22" alt="" aria-hidden="true"/>
             <span
                 class="app-bar__filename"
                 title=move || path.get()
@@ -19,7 +19,7 @@ pub fn AppBar(
             </span>
             <div class="app-bar__actions">
                 <button node_ref=visual_rules_button_ref type="button" on:click=move |_| open_visual_rules.run(())>"Visual Rules"</button>
-                <button type="button" aria-label="Future actions" title="Future actions">"…"</button>
+                <button hidden type="button" aria-label="Future actions" title="Future actions">"…"</button>
             </div>
         </header>
     }

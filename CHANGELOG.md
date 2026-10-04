@@ -8,6 +8,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Added
 
+- Web favicons and Desktop app icons now use Logmancer's illustrated book artwork, with simplified artwork for small sizes.
 - Desktop, standalone Web, and TUI now write daily runtime logs to per-user directories on Linux and Windows, retain up to seven files per variant, and mirror errors to an attached terminal.
 
 - Linux releases now include a DEB package that installs the complete suite, generated web assets, desktop-menu entry, and public commands.
@@ -18,6 +19,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- The viewer now has a compact 32-pixel toolbar with a Logmancer icon, smaller controls, and the unused actions button hidden; the filter panel starts at 20% of the viewer height.
+- Web and Desktop now use a shared graphite-and-blue dark palette with centralized CSS color variables; previous light colors remain documented in the stylesheet.
 - Daily runtime logs now place the date before the file extension; existing logs in the previous format are left untouched.
 - The launcher, installed Desktop, and standalone Web now resolve bundled Leptos runtime defaults and generated `site/` assets without requiring `LEPTOS_SITE_ROOT`; explicit overrides remain authoritative, and Desktop bundle assets are generated only during packaging.
 - Runtime logs now identify each resolved parameter's source without logging its value.
