@@ -83,7 +83,7 @@ pub fn LogView() -> impl IntoView {
     let (selected_original_line, set_selected_original_line) = signal(None::<usize>);
     let (selected_line_source, set_selected_line_source) = signal(SelectionSource::Main);
     let (active_pane, set_active_pane) = signal(SelectionSource::Main);
-    let (filter_height_percent, set_filter_height_percent) = signal(30.0_f64);
+    let (filter_height_percent, set_filter_height_percent) = signal(20.0_f64);
     let (is_resizing, set_is_resizing) = signal(false);
     let (search_panel_visible, set_search_panel_visible) = signal(false);
     let (search_query, set_search_query) = signal(String::new());

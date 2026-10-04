@@ -1,6 +1,6 @@
 use crate::components::{Home, LogView};
 use leptos::prelude::*;
-use leptos_meta::{provide_meta_context, Stylesheet, Title};
+use leptos_meta::{provide_meta_context, Link, Stylesheet, Title};
 use leptos_router::{
     components::{Route, Router, Routes},
     path,
@@ -18,6 +18,10 @@ pub fn App() -> impl IntoView {
 
         // sets the document title
         <Title text="Logmancer"/>
+        <Link rel="icon" type_="image/x-icon" href="/favicon.ico"/>
+        <Link rel="icon" type_="image/png" sizes="16x16" href="/favicon-16x16.png"/>
+        <Link rel="icon" type_="image/png" sizes="32x32" href="/favicon-32x32.png"/>
+        <Link rel="icon" type_="image/png" sizes="48x48" href="/favicon-48x48.png"/>
 
         // content for this welcome page
         <Router>
