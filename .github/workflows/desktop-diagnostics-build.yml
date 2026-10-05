@@ -69,7 +69,8 @@ jobs:
           shared-key: desktop-diagnostics-${{ runner.os }}-${{ matrix.package_name }}
 
       - name: Install cargo-leptos
-        run: cargo install cargo-leptos --locked
+        # Keep the tool and its locked dependencies compatible with Rust 1.95.0.
+        run: cargo install cargo-leptos --version "=0.3.10" --locked
 
       - name: Build release binaries
         # Diagnostics workflow: intentionally no tests and no clippy.
