@@ -146,7 +146,12 @@ class PackagingTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("makepkg"), "Requires makepkg")
     def test_committed_srcinfo_matches_recipe(self):
-        generated = subprocess.check_output(["makepkg", "--printsrcinfo"], cwd=RECIPE_DIR, text=True)
+        # makepkg requires a writable BUILDDIR even when only printing metadata.
+        # CI's checkout can belong to root while the tests run as builder.
+        build_dir = self.root / "srcinfo"
+        build_dir.mkdir()
+        shutil.copy2(RECIPE_DIR / "PKGBUILD", build_dir)
+        generated = subprocess.check_output(["makepkg", "--printsrcinfo"], cwd=build_dir, text=True)
         self.assertEqual(generated, (RECIPE_DIR / ".SRCINFO").read_text())
 
 
