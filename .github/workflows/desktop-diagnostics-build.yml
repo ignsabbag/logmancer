@@ -11,6 +11,13 @@ env:
   LEPTOS_OUTPUT_NAME: logmancer-web
 
 jobs:
+  arch:
+    name: Package diagnostic build for Arch Linux
+    uses: ./.github/workflows/arch-package.yml
+    with:
+      ref: ${{ github.sha }}
+      artifact-name: logmancer-diagnostics-package-linux-arch
+
   package:
     name: Package diagnostic build for ${{ matrix.package_name }}
     runs-on: ${{ matrix.os }}

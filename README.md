@@ -64,6 +64,8 @@ Logmancer is structured as a multi-crate workspace:
 
 ### Building from Source
 
+For Arch Linux suite packages, see [the Arch packaging guide](packaging/aur/README.md).
+
 1. Clone the repository:
    ```sh
    git clone https://github.com/ignsabbag/logmancer.git

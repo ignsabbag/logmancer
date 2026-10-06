@@ -171,9 +171,16 @@ jobs:
           path: target/${{ matrix.target }}/release/bundle/nsis/*.exe
           if-no-files-found: error
 
+  arch:
+    name: Package release for Arch Linux
+    uses: ./.github/workflows/arch-package.yml
+    with:
+      ref: ${{ github.ref_name }}
+      release: true
+
   publish:
     name: Publish GitHub release
-    needs: package
+    needs: [package, arch]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -197,10 +204,10 @@ jobs:
           fi
 
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" dist/*.zip dist/*.deb dist/*.exe --clobber
+            gh release upload "$TAG_NAME" dist/*.zip dist/*.deb dist/*.exe dist/*.pkg.tar.zst --clobber
             if ((${#release_flags[@]})); then
               gh release edit "$TAG_NAME" "${release_flags[@]}"
             fi
           else
-            gh release create "$TAG_NAME" dist/*.zip dist/*.deb dist/*.exe --title "$TAG_NAME" --generate-notes "${release_flags[@]}"
+            gh release create "$TAG_NAME" dist/*.zip dist/*.deb dist/*.exe dist/*.pkg.tar.zst --title "$TAG_NAME" --generate-notes "${release_flags[@]}"
           fi

@@ -171,9 +171,16 @@ jobs:
           path: target/${{ matrix.target }}/release/bundle/deb/*.deb
           if-no-files-found: error
 
+  arch:
+    name: Package for Arch Linux
+    if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success'
+    uses: ./.github/workflows/arch-package.yml
+    with:
+      ref: ${{ github.event.workflow_run.head_sha }}
+
   cleanup-artifacts:
     name: Keep only latest main artifacts
-    needs: build
+    needs: [build, arch]
     if: github.event.workflow_run.event == 'push' && github.event.workflow_run.conclusion == 'success' && success()
     runs-on: ubuntu-latest
 

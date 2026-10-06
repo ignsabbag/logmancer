@@ -1,0 +1,79 @@
+# Maintainer: Logmancer contributors (https://github.com/ignsabbag/logmancer)
+# Source-built suite; CI changes only source metadata in a temporary copy.
+# makepkg consumes metadata and supplies srcdir/pkgdir.
+# shellcheck disable=SC2034,SC2154
+pkgname=logmancer
+pkgver=0.5.0beta2
+pkgrel=1
+pkgdesc='Disk-backed log viewer with desktop, web, and terminal frontends'
+arch=('x86_64')
+url='https://github.com/ignsabbag/logmancer'
+license=('MIT')
+depends=('glibc' 'gcc-libs' 'glib2' 'gtk3' 'cairo' 'pango' 'gdk-pixbuf2'
+         'at-spi2-core' 'webkit2gtk-4.1' 'libsoup3' 'openssl' 'hicolor-icon-theme')
+makedepends=('rustup' 'pkgconf' 'cmake')
+options=('!lto' '!debug')
+_tag=v0.5.0-beta.2
+_srcname=logmancer-0.5.0-beta.2
+source=("logmancer-source.tar.gz::$url/archive/refs/tags/$_tag.tar.gz" 'logmancer.desktop')
+sha256sums=('de383fcb130bee7d637a38f1eec41c61cfd92bd564ed36215daf1fb092c1337b'
+            '09c7f78306046cc43875ec6e2fee8afb1fd389a01cac1cd49d34ce4746f3b6ff')
+
+_build_environment() {
+  # Never depend on or modify the caller's Rust installation or Cargo cache.
+  export CARGO_HOME="$srcdir/cargo-home"
+  export RUSTUP_HOME="$srcdir/rustup-home"
+  export RUSTUP_TOOLCHAIN
+  RUSTUP_TOOLCHAIN=$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$srcdir/$_srcname/rust-toolchain.toml")
+  export PATH="$srcdir/tools/bin:$PATH"
+  export CARGO_TARGET_DIR="$srcdir/$_srcname/target"
+  export LEPTOS_OUTPUT_NAME=logmancer-web
+  export LEPTOS_SITE_ROOT=target/site
+}
+
+prepare() {
+  _build_environment
+  cd "$srcdir/$_srcname" || return
+  rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --target wasm32-unknown-unknown
+  cargo install cargo-leptos --version '=0.3.10' --locked --root "$srcdir/tools"
+  cargo fetch --locked
+}
+
+build() {
+  _build_environment
+  cd "$srcdir/$_srcname" || return
+  cargo build --release --locked -p logmancer-launcher -p logmancer-tui
+  cargo leptos build --release --cargo-locked --project logmancer-web
+  # Equivalent release feature selection to Tauri CLI, without another bundle
+  # or another Leptos build. Tauri resources are installed by package().
+  export TAURI_CONFIG='{"bundle":{"resources":{"../target/site":"site"}}}'
+  cargo build --release --locked -p logmancer-desktop --features tauri/custom-protocol
+}
+
+package() {
+  cd "$srcdir/$_srcname" || return
+  local binary size extension
+  for extension in css js wasm; do
+    if [[ ! -s "target/site/pkg/logmancer-web.$extension" ]]; then
+      printf 'Missing generated Leptos asset: %s\n' "$extension" >&2
+      return 1
+    fi
+  done
+  for binary in logmancer logmancer-desktop logmancer-web logmancer-tui; do
+    install -Dm755 "target/release/$binary" "$pkgdir/usr/lib/logmancer/$binary"
+    install -d "$pkgdir/usr/bin"
+    ln -s "../lib/logmancer/$binary" "$pkgdir/usr/bin/$binary"
+  done
+  install -d "$pkgdir/usr/lib/logmancer/site"
+  cp -a target/site/. "$pkgdir/usr/lib/logmancer/site/"
+  # Tauri uses productName (Logmancer), not the executable name, on Linux.
+  ln -s logmancer "$pkgdir/usr/lib/Logmancer"
+  install -Dm644 "$srcdir/logmancer.desktop" "$pkgdir/usr/share/applications/logmancer.desktop"
+  for size in 32 128; do
+    install -Dm644 "logmancer-desktop/icons/${size}x${size}.png" \
+      "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/logmancer.png"
+  done
+  install -Dm644 logmancer-desktop/icons/128x128@2x.png \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/logmancer.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
