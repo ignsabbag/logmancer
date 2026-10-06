@@ -34,6 +34,28 @@ env:
   LEPTOS_OUTPUT_NAME: logmancer-web
 
 jobs:
+  arch-recipe:
+    name: Test Arch packaging recipe
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Install recipe validation tools
+        run: pacman -Syu --noconfirm --needed git python namcap desktop-file-utils shellcheck
+
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Test recipe without building Rust
+        run: |
+          useradd --create-home builder
+          runuser -u builder -- python -W error::ResourceWarning -m unittest discover -s packaging/aur/tests -v
+          python packaging/aur/check_namcap.py packaging/aur/PKGBUILD
+          desktop-file-validate packaging/aur/logmancer.desktop
+          shellcheck -s bash packaging/aur/PKGBUILD
+
   test:
     name: Test (${{ matrix.name }})
     runs-on: ${{ matrix.os }}

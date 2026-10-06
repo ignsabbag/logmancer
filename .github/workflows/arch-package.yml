@@ -1,0 +1,89 @@
+name: Arch package
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        required: true
+        type: string
+      release:
+        default: false
+        type: boolean
+      artifact-name:
+        default: logmancer-package-linux-arch
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  arch:
+    name: Build and validate Arch suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container:
+      image: archlinux:base-devel
+      # systemd-nspawn used by pkgctl needs mounts and namespaces.
+      options: --privileged
+    steps:
+      - name: Install Arch validation tools
+        run: pacman -Syu --noconfirm --needed git python devtools namcap sudo desktop-file-utils
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Prepare unprivileged builder
+        run: |
+          useradd --create-home builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          chmod 440 /etc/sudoers.d/builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Test recipe and source preparation
+        run: |
+          runuser -u builder -- python -m unittest discover -s packaging/aur/tests -v
+          runuser -u builder -- bash -c 'cd packaging/aur && makepkg --printsrcinfo > /tmp/generated.SRCINFO && diff -u .SRCINFO /tmp/generated.SRCINFO'
+          desktop-file-validate packaging/aur/logmancer.desktop
+
+      - name: Stage exact workflow source
+        env:
+          SOURCE_REF: ${{ inputs.ref }}
+          RELEASE_BUILD: ${{ inputs.release }}
+        run: |
+          args=()
+          if [[ "$RELEASE_BUILD" == true ]]; then
+            args+=(--release)
+          fi
+          runuser -u builder -- python packaging/aur/prepare_ci.py "$GITHUB_WORKSPACE/arch-build" --ref "$SOURCE_REF" "${args[@]}"
+        shell: bash
+
+      - name: Build in clean chroot and validate package
+        run: |
+          runuser -u builder -- bash -c 'cd arch-build && pkgctl build --repo extra --arch x86_64 --clean --inspect never'
+          python packaging/aur/check_namcap.py arch-build/PKGBUILD arch-build/logmancer-*.pkg.tar.zst
+          pacman -U --noconfirm arch-build/logmancer-*.pkg.tar.zst
+          runuser -u builder -- python packaging/aur/smoke_test.py
+          pacman -R --noconfirm logmancer
+          test ! -e /usr/bin/logmancer
+          test ! -e /usr/lib/logmancer
+          test ! -L /usr/lib/Logmancer
+          test ! -e /usr/share/applications/logmancer.desktop
+
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: |
+            arch-build/logmancer-*.pkg.tar.zst
+            arch-build/SOURCE_COMMIT
+          if-no-files-found: error
+
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: arch-validation-logs
+          path: arch-build/*.log
+          if-no-files-found: ignore

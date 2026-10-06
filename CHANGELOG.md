@@ -8,6 +8,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Added
 
+- Added a source-built Arch suite recipe and development, release, and manual diagnostics `.pkg.tar.zst` workflow artifacts, with clean-chroot builds and installed headless checks; AUR publication remains separate.
+
 - Web favicons and Desktop app icons now use Logmancer's illustrated book artwork, with simplified artwork for small sizes.
 - Desktop, standalone Web, and TUI now write daily runtime logs to per-user directories on Linux and Windows, retain up to seven files per variant, and mirror errors to an attached terminal.
 

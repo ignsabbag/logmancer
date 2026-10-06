@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Logmancer
+Comment=View and search large log files
+Exec=logmancer-desktop %F
+Icon=logmancer
+Terminal=false
+Categories=Utility;TextTools;
+MimeType=text/plain;
+StartupWMClass=logmancer-desktop
