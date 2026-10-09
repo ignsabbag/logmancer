@@ -1,0 +1,91 @@
+name: Package Linux
+
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
+      release_tag:
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  LEPTOS_OUTPUT_NAME: logmancer-web
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config zip libglib2.0-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libwebkit2gtk-4.1-dev patchelf librsvg2-dev
+          for dependency in glib-2.0 gdk-3.0 gtk+-3.0 libsoup-3.0 javascriptcoregtk-4.1 webkit2gtk-4.1; do
+            pkg-config --exists "$dependency"
+          done
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: x86_64-unknown-linux-gnu,wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+        with:
+          shared-key: package-linux
+      - name: Install packaging tools
+        run: |
+          cargo install cargo-leptos --version '=0.3.10' --locked
+          cargo install tauri-cli --version '^2' --locked
+      - name: Build suite and assets
+        env:
+          LEPTOS_SITE_ROOT: target/site
+        run: |
+          cargo build --release --target x86_64-unknown-linux-gnu
+          cargo leptos build --release --project logmancer-web
+      - name: Build DEB
+        run: |
+          chmod +x packaging/debian/bin/*
+          cargo tauri build --target x86_64-unknown-linux-gnu --bundles deb --config logmancer-desktop/tauri.deb.bundle.conf.json
+      - name: Package portable suite
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          package_root=dist/logmancer-linux
+          mkdir -p "$package_root"
+          for binary in logmancer logmancer-web logmancer-desktop logmancer-tui; do
+            cp "target/x86_64-unknown-linux-gnu/release/$binary" "$package_root/"
+          done
+          cp -R target/site "$package_root/site"
+          cp packaging/portable/README.txt packaging/portable/linux/run-web.sh packaging/portable/linux/run-desktop.sh "$package_root/"
+          chmod +x "$package_root/"*.sh
+          if [[ -n "$RELEASE_TAG" ]]; then
+            archive="logmancer-${RELEASE_TAG#v}-linux-portable.zip"
+            (cd "$package_root" && zip -r "../$archive" .)
+          fi
+      - name: Upload development portable
+        if: inputs.release_tag == ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-package-linux
+          path: dist/logmancer-linux
+          if-no-files-found: error
+      - name: Upload release portable
+        if: inputs.release_tag != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-portable-linux
+          path: dist/*.zip
+          if-no-files-found: error
+      - name: Upload DEB
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-package-linux-deb
+          path: target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+          if-no-files-found: error

@@ -1,0 +1,95 @@
+name: Package Windows
+
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
+      release_tag:
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  LEPTOS_OUTPUT_NAME: logmancer-web
+
+jobs:
+  package:
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: x86_64-pc-windows-msvc,wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+        with:
+          shared-key: package-windows
+      - name: Install packaging tools
+        shell: bash
+        run: |
+          cargo install cargo-leptos --version '=0.3.10' --locked
+          cargo install tauri-cli --version '^2' --locked
+      - name: Build suite and assets
+        shell: bash
+        env:
+          LEPTOS_SITE_ROOT: target/site
+        run: |
+          cargo build --release --target x86_64-pc-windows-msvc
+          cargo leptos build --release --project logmancer-web
+      - name: Build NSIS
+        shell: pwsh
+        run: |
+          $targetTriple = "x86_64-pc-windows-msvc"
+          $targetDir = "target/$targetTriple/release"
+          $sidecarDir = "logmancer-desktop/binaries"
+          New-Item -ItemType Directory -Path $sidecarDir -Force | Out-Null
+          foreach ($binary in @("logmancer", "logmancer-web", "logmancer-tui")) {
+            Copy-Item "$targetDir/$binary.exe" "$sidecarDir/$binary-$targetTriple.exe" -Force
+          }
+          cargo tauri build --target $targetTriple --bundles nsis --config logmancer-desktop/tauri.windows.bundle.conf.json
+      - name: Package portable suite
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $targetDir = "target/x86_64-pc-windows-msvc/release"
+          $packageRoot = "dist/logmancer-windows"
+          New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+          foreach ($binary in @("logmancer", "logmancer-web", "logmancer-desktop", "logmancer-tui")) {
+            Copy-Item "$targetDir/$binary.exe" "$packageRoot/"
+          }
+          Copy-Item "target/site" "$packageRoot/site" -Recurse -Force
+          Copy-Item "packaging/portable/README.txt" "$packageRoot/"
+          Copy-Item "packaging/portable/windows/run-web.cmd" "$packageRoot/"
+          Copy-Item "packaging/portable/windows/run-desktop.cmd" "$packageRoot/"
+          if ($env:RELEASE_TAG) {
+            $version = $env:RELEASE_TAG -replace '^v', ''
+            Compress-Archive -Path "$packageRoot/*" -DestinationPath "dist/logmancer-$version-windows-portable.zip" -Force
+          }
+      - name: Upload development portable
+        if: inputs.release_tag == ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-package-windows
+          path: dist/logmancer-windows
+          if-no-files-found: error
+      - name: Upload release portable
+        if: inputs.release_tag != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-portable-windows
+          path: dist/*.zip
+          if-no-files-found: error
+      - name: Upload NSIS
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-installer-windows
+          path: target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: error

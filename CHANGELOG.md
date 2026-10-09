@@ -8,6 +8,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Added
 
+- Development and release workflows now generate source-built Arch Linux suite packages (`.pkg.tar.zst`) from the exact checkout.
 - Web favicons and Desktop app icons now use Logmancer's illustrated book artwork, with simplified artwork for small sizes.
 - Desktop, standalone Web, and TUI now write daily runtime logs to per-user directories on Linux and Windows, retain up to seven files per variant, and mirror errors to an attached terminal.
 
@@ -19,6 +20,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- Linux, Windows, and Arch packaging now use reusable workflows; manual Build runs replace desktop diagnostics, run tests and clippy, and support platform selection without pruning manual artifacts.
 - The viewer now has a compact 32-pixel toolbar with a Logmancer icon, smaller controls, and the unused actions button hidden; the filter panel starts at 20% of the viewer height.
 - Web and Desktop now use a shared graphite-and-blue dark palette with centralized CSS color variables; previous light colors remain documented in the stylesheet.
 - Daily runtime logs now place the date before the file extension; existing logs in the previous format are left untouched.

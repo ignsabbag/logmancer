@@ -1,0 +1,54 @@
+name: Package Arch
+
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
+      release_tag:
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Prepare Arch environment
+        run: |
+          pacman -Syu --noconfirm --needed git rustup gtk3 webkit2gtk-4.1 libsoup3 librsvg openssl pkgconf
+          useradd --create-home builder
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Prepare checkout source recipe
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          bash packaging/arch/tests/prepare_ci.sh
+          bash packaging/arch/prepare_ci.sh "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/target/arch-recipe" "$RELEASE_TAG"
+          chown -R builder:builder target/arch-recipe
+      - name: Install Rust toolchain and build package
+        run: |
+          # Expanded by the builder's shell, not the root shell.
+          # shellcheck disable=SC2016
+          runuser -u builder -- env HOME=/home/builder bash -euo pipefail -c '
+            rustup toolchain install 1.95.0 --profile minimal --target wasm32-unknown-unknown
+            rustup default 1.95.0
+            cd "$1"
+            makepkg --noconfirm
+          ' -- "$GITHUB_WORKSPACE/target/arch-recipe"
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-package-linux-arch
+          path: target/arch-recipe/*.pkg.tar.zst
+          if-no-files-found: error
