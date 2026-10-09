@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Logmancer
+Comment=View and explore log files
+Exec=logmancer-desktop %F
+Icon=logmancer
+Terminal=false
+Categories=Development;Utility;
+StartupNotify=true
