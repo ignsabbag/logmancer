@@ -29,6 +29,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Fixed
 
+- Arch packaging now trusts the mounted workflow checkout explicitly, avoiding Git ownership rejection inside the container.
 - Build, Release, and desktop diagnostics now pin cargo-leptos to 0.3.10 with locked dependencies, avoiding installation failures from newer tool dependencies that require Rust 1.96.
 - Windows visual-rules updates now sync their backup through a writable handle, avoiding access-denied failures before replacement; Unix backups retain their read-only sync behavior.
 - Visual-rules persistence failures now include operation and path diagnostics in runtime logs while API responses remain safe and actionable.
