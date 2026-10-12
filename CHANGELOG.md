@@ -8,6 +8,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Added
 
+- Development and release workflows now generate source-built Arch Linux suite packages (`.pkg.tar.zst`) from the exact checkout.
 - Web favicons and Desktop app icons now use Logmancer's illustrated book artwork, with simplified artwork for small sizes.
 - Desktop, standalone Web, and TUI now write daily runtime logs to per-user directories on Linux and Windows, retain up to seven files per variant, and mirror errors to an attached terminal.
 
@@ -19,6 +20,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- Arch workflow artifacts now use platform-oriented filenames while preserving internal pacman versions, and cache Cargo downloads and the pinned packaging tool for compatible build environments.
+- Linux, Windows, and Arch packaging now use reusable workflows; manual Build runs replace desktop diagnostics, run tests and clippy, and support platform selection without pruning manual artifacts.
 - The viewer now has a compact 32-pixel toolbar with a Logmancer icon, smaller controls, and the unused actions button hidden; the filter panel starts at 20% of the viewer height.
 - Web and Desktop now use a shared graphite-and-blue dark palette with centralized CSS color variables; previous light colors remain documented in the stylesheet.
 - Daily runtime logs now place the date before the file extension; existing logs in the previous format are left untouched.
@@ -27,6 +30,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Fixed
 
+- Windows packaging installs build tools through the native PowerShell environment instead of Git Bash's incomplete Perl, avoiding vendored OpenSSL configuration failures.
+- Arch packaging now trusts the mounted workflow checkout explicitly, avoiding Git ownership rejection inside the container.
 - Build, Release, and desktop diagnostics now pin cargo-leptos to 0.3.10 with locked dependencies, avoiding installation failures from newer tool dependencies that require Rust 1.96.
 - Windows visual-rules updates now sync their backup through a writable handle, avoiding access-denied failures before replacement; Unix backups retain their read-only sync behavior.
 - Visual-rules persistence failures now include operation and path diagnostics in runtime logs while API responses remain safe and actionable.

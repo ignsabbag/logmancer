@@ -2,189 +2,42 @@ name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
 
 permissions:
-  contents: write
-
-env:
-  CARGO_TERM_COLOR: always
-  LEPTOS_OUTPUT_NAME: logmancer-web
+  contents: read
 
 jobs:
-  package:
-    name: Package release for ${{ matrix.package_name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            package_name: linux
-          - os: windows-2025-vs2026
-            target: x86_64-pc-windows-msvc
-            package_name: windows
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Resolve release version
-        shell: bash
-        run: echo "LOGMANCER_VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
-
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            pkg-config \
-            zip \
-            libglib2.0-dev \
-            libgtk-3-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            libwebkit2gtk-4.1-dev \
-            patchelf \
-            librsvg2-dev
-
-      - name: Preflight Linux pkg-config dependencies
-        if: runner.os == 'Linux'
-        run: |
-          pkg-config --exists glib-2.0
-          pkg-config --exists gdk-3.0
-          pkg-config --exists gtk+-3.0
-          pkg-config --exists libsoup-3.0
-          pkg-config --exists javascriptcoregtk-4.1
-          pkg-config --exists webkit2gtk-4.1
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: ${{ matrix.target }},wasm32-unknown-unknown
-
-      - name: Cache Rust dependencies
-        continue-on-error: true
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: release-${{ runner.os }}-${{ matrix.package_name }}
-
-      - name: Install cargo-leptos
-        # Keep the tool and its locked dependencies compatible with Rust 1.95.0.
-        run: cargo install cargo-leptos --version "=0.3.10" --locked
-
-      - name: Build release binaries
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Build web site assets
-        env:
-          LEPTOS_OUTPUT_NAME: logmancer-web
-          LEPTOS_SITE_ROOT: target/site
-        run: cargo leptos build --release --project logmancer-web
-
-      - name: Install Tauri CLI
-        run: cargo install tauri-cli --version "^2" --locked
-
-      - name: Build Linux DEB package
-        if: runner.os == 'Linux'
-        run: |
-          chmod +x packaging/debian/bin/*
-          cargo tauri build --target ${{ matrix.target }} --bundles deb --config logmancer-desktop/tauri.deb.bundle.conf.json
-
-      - name: Build Windows NSIS installer
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $targetTriple = "${{ matrix.target }}"
-          $targetDir = "target/$targetTriple/release"
-          $sidecarDir = "logmancer-desktop/binaries"
-
-          New-Item -ItemType Directory -Path $sidecarDir -Force | Out-Null
-          foreach ($binary in @("logmancer", "logmancer-web", "logmancer-tui")) {
-            Copy-Item "$targetDir/$binary.exe" "$sidecarDir/$binary-$targetTriple.exe" -Force
-          }
-
-          cargo tauri build --target $targetTriple --bundles nsis --config logmancer-desktop/tauri.windows.bundle.conf.json
-
-      - name: Package Linux portable zip
-        if: runner.os == 'Linux'
-        run: |
-          set -euo pipefail
-          target_dir="target/${{ matrix.target }}/release"
-          package_root="dist/logmancer-${{ matrix.package_name }}"
-          archive_name="logmancer-${LOGMANCER_VERSION}-${{ matrix.package_name }}-portable.zip"
-
-          mkdir -p "$package_root"
-          cp "$target_dir/logmancer" "$package_root/"
-          cp "$target_dir/logmancer-web" "$package_root/"
-          cp "$target_dir/logmancer-desktop" "$package_root/"
-          cp "$target_dir/logmancer-tui" "$package_root/"
-          cp -R target/site "$package_root/site"
-          cp packaging/portable/README.txt "$package_root/"
-          cp packaging/portable/linux/run-web.sh "$package_root/"
-          cp packaging/portable/linux/run-desktop.sh "$package_root/"
-
-          chmod +x "$package_root/run-web.sh" "$package_root/run-desktop.sh"
-          (cd "$package_root" && zip -r "../$archive_name" .)
-
-      - name: Package Windows portable zip
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $targetDir = "target/${{ matrix.target }}/release"
-          $packageRoot = "dist/logmancer-${{ matrix.package_name }}"
-          $archiveName = "logmancer-${env:LOGMANCER_VERSION}-${{ matrix.package_name }}-portable.zip"
-
-          New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
-          Copy-Item "$targetDir/logmancer.exe" "$packageRoot/"
-          Copy-Item "$targetDir/logmancer-web.exe" "$packageRoot/"
-          Copy-Item "$targetDir/logmancer-desktop.exe" "$packageRoot/"
-          Copy-Item "$targetDir/logmancer-tui.exe" "$packageRoot/"
-          Copy-Item "target/site" "$packageRoot/site" -Recurse -Force
-          Copy-Item "packaging/portable/README.txt" "$packageRoot/"
-          Copy-Item "packaging/portable/windows/run-web.cmd" "$packageRoot/"
-          Copy-Item "packaging/portable/windows/run-desktop.cmd" "$packageRoot/"
-
-          Compress-Archive -Path "$packageRoot/*" -DestinationPath "dist/$archiveName" -Force
-
-      - name: Upload portable zip artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: logmancer-portable-${{ matrix.package_name }}
-          path: dist/logmancer-*-${{ matrix.package_name }}-portable.zip
-          if-no-files-found: error
-
-      - name: Upload DEB artifact
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v7
-        with:
-          name: logmancer-package-linux-deb
-          path: target/${{ matrix.target }}/release/bundle/deb/*.deb
-          if-no-files-found: error
-
-      - name: Upload NSIS installer artifact
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: logmancer-installer-windows
-          path: target/${{ matrix.target }}/release/bundle/nsis/*.exe
-          if-no-files-found: error
+  linux:
+    uses: ./.github/workflows/package-linux.yml
+    with:
+      source_ref: ${{ github.sha }}
+      release_tag: ${{ github.ref_name }}
+  windows:
+    uses: ./.github/workflows/package-windows.yml
+    with:
+      source_ref: ${{ github.sha }}
+      release_tag: ${{ github.ref_name }}
+  arch:
+    uses: ./.github/workflows/package-arch.yml
+    with:
+      source_ref: ${{ github.sha }}
+      release_tag: ${{ github.ref_name }}
 
   publish:
     name: Publish GitHub release
-    needs: package
+    needs: [linux, windows, arch]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
-
       - name: Download release assets
         uses: actions/download-artifact@v7
         with:
           pattern: logmancer-*
           path: dist
           merge-multiple: true
-
       - name: Create or update release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -195,12 +48,12 @@ jobs:
           if [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
             release_flags+=(--prerelease)
           fi
-
+          assets=(dist/*.zip dist/*.deb dist/*.exe dist/*.pkg.tar.zst)
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
-            gh release upload "$TAG_NAME" dist/*.zip dist/*.deb dist/*.exe --clobber
+            gh release upload "$TAG_NAME" "${assets[@]}" --clobber
             if ((${#release_flags[@]})); then
               gh release edit "$TAG_NAME" "${release_flags[@]}"
             fi
           else
-            gh release create "$TAG_NAME" dist/*.zip dist/*.deb dist/*.exe --title "$TAG_NAME" --generate-notes "${release_flags[@]}"
+            gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --generate-notes "${release_flags[@]}"
           fi

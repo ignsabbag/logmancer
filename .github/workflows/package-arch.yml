@@ -1,0 +1,81 @@
+name: Package Arch
+
+on:
+  workflow_call:
+    inputs:
+      source_ref:
+        required: true
+        type: string
+      release_tag:
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Prepare Arch environment
+        id: arch
+        run: |
+          pacman -Syu --noconfirm --needed git rustup gtk3 webkit2gtk-4.1 libsoup3 librsvg openssl pkgconf
+          useradd --create-home builder
+          echo "packages=$(pacman -Q | sha256sum | cut -d ' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Trust mounted checkout inside the Arch container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Prepare checkout source recipe
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          bash packaging/arch/tests/prepare_ci.sh
+          bash packaging/arch/prepare_ci.sh "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/target/arch-recipe" "$RELEASE_TAG"
+      - name: Cache Cargo dependencies and pinned packaging tool
+        uses: actions/cache@v4
+        continue-on-error: true
+        with:
+          path: |
+            target/arch-recipe/src/cargo-home/registry
+            target/arch-recipe/src/cargo-home/git
+            target/arch-recipe/src/tools
+          key: arch-tools-v1-${{ steps.arch.outputs.packages }}-${{ hashFiles('Cargo.lock', 'packaging/arch/PKGBUILD', '.github/workflows/package-arch.yml') }}
+      - name: Give the builder ownership of the prepared recipe and restored cache
+        run: |
+          chown -R builder:builder target/arch-recipe
+      - name: Install Rust toolchain and build package
+        run: |
+          # Expanded by the builder's shell, not the root shell.
+          # shellcheck disable=SC2016
+          runuser -u builder -- env HOME=/home/builder bash -euo pipefail -c '
+            rustup toolchain install 1.95.0 --profile minimal --target wasm32-unknown-unknown
+            rustup default 1.95.0
+            cd "$1"
+            makepkg --noconfirm
+          ' -- "$GITHUB_WORKSPACE/target/arch-recipe"
+      - name: Prepare distribution filename
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=(target/arch-recipe/*.pkg.tar.zst)
+          if ((${#packages[@]} != 1)); then
+            echo "Expected one Arch package, found ${#packages[@]}" >&2
+            exit 1
+          fi
+          filename=$(cat target/arch-recipe/distribution-name.txt)
+          install -Dm644 "${packages[0]}" "dist/arch/$filename"
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v7
+        with:
+          name: logmancer-package-linux-arch
+          path: dist/arch/*.pkg.tar.zst
+          if-no-files-found: error

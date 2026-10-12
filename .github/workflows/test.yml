@@ -1,6 +1,12 @@
 name: Test
 
 on:
+  workflow_call:
+    inputs:
+      source_ref:
+        description: Exact commit to test
+        required: true
+        type: string
   push:
     branches: ["main"]
     paths-ignore:
@@ -23,7 +29,7 @@ on:
       - "**/*.log"
 
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.ref }}
+  group: test-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -54,6 +60,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -91,6 +99,10 @@ jobs:
 
       - name: Run tests
         run: ${{ matrix.test_command }}
+
+      - name: Test Arch source preparation
+        if: runner.os == 'Linux'
+        run: bash packaging/arch/tests/prepare_ci.sh
 
       - name: Run clippy
         if: matrix.clippy

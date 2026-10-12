@@ -1,0 +1,53 @@
+# Checkout-based CI recipe, not a tag-based AUR recipe. prepare_ci.sh replaces
+# only the source metadata in a temporary copy; build/package stay shared.
+# srcdir and pkgdir are supplied by makepkg.
+# shellcheck disable=SC2154
+pkgname=logmancer
+pkgver=0.0.0
+pkgrel=1
+pkgdesc='Log viewer suite with Desktop, Web, TUI, and a launcher'
+arch=('x86_64')
+url='https://github.com/ignsabbag/logmancer'
+license=('MIT')
+depends=('glibc' 'gcc-libs' 'gtk3' 'webkit2gtk-4.1' 'libsoup3' 'librsvg' 'openssl')
+makedepends=('rustup' 'pkgconf')
+options=('!lto' '!debug')
+source=('logmancer-source.tar.gz')
+sha256sums=('REPLACED_BY_PREPARE_CI')
+
+build() {
+  cd "$srcdir/logmancer-source" || return
+  export PATH="$HOME/.cargo/bin:$PATH"
+  export LEPTOS_OUTPUT_NAME=logmancer-web
+  export LEPTOS_SITE_ROOT=target/site
+  export CARGO_TARGET_DIR="$PWD/target"
+  export CARGO_HOME="$srcdir/cargo-home"
+
+  # Isolate the pinned tool installation from any tools on the build host.
+  # This auxiliary tool is not shipped. Avoid its expensive full-LTO link and
+  # makepkg debug flags so packaging fits within hosted-runner memory limits.
+  RUSTFLAGS='' CARGO_PROFILE_RELEASE_LTO=false CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 \
+    CARGO_PROFILE_RELEASE_DEBUG=0 cargo +1.95.0 install cargo-leptos \
+    --version '=0.3.10' --locked --jobs 2 --root "$srcdir/tools"
+  "$srcdir/tools/bin/cargo-leptos" leptos build --release --cargo-locked --project logmancer-web
+  cargo +1.95.0 build --release --locked --workspace
+}
+
+package() {
+  cd "$srcdir/logmancer-source" || return
+  install -d "$pkgdir/usr/lib/logmancer" "$pkgdir/usr/bin"
+  for binary in logmancer logmancer-desktop logmancer-web logmancer-tui; do
+    install -Dm755 "target/release/$binary" "$pkgdir/usr/lib/logmancer/$binary"
+    # Wrappers keep the real executable and its sibling assets together.
+    printf '#!/bin/sh\nexec /usr/lib/logmancer/%s "$@"\n' "$binary" > "$pkgdir/usr/bin/$binary"
+    chmod 755 "$pkgdir/usr/bin/$binary"
+  done
+  cp -a target/site "$pkgdir/usr/lib/logmancer/site"
+  # Tauri uses its Cargo package name for the Linux resource-directory fallback.
+  ln -s logmancer "$pkgdir/usr/lib/logmancer-desktop"
+  install -Dm644 packaging/arch/logmancer.desktop "$pkgdir/usr/share/applications/logmancer.desktop"
+  install -Dm644 logmancer-desktop/icons/32x32.png "$pkgdir/usr/share/icons/hicolor/32x32/apps/logmancer.png"
+  install -Dm644 logmancer-desktop/icons/128x128.png "$pkgdir/usr/share/icons/hicolor/128x128/apps/logmancer.png"
+  install -Dm644 logmancer-desktop/icons/128x128@2x.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/logmancer.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
