@@ -20,6 +20,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Changed
 
+- Arch workflow artifacts now use platform-oriented filenames while preserving internal pacman versions, and cache Cargo downloads and the pinned packaging tool for compatible build environments.
 - Linux, Windows, and Arch packaging now use reusable workflows; manual Build runs replace desktop diagnostics, run tests and clippy, and support platform selection without pruning manual artifacts.
 - The viewer now has a compact 32-pixel toolbar with a Logmancer icon, smaller controls, and the unused actions button hidden; the filter panel starts at 20% of the viewer height.
 - Web and Desktop now use a shared graphite-and-blue dark palette with centralized CSS color variables; previous light colors remain documented in the stylesheet.

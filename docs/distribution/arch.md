@@ -32,6 +32,14 @@ all workspace executables. The auxiliary tool uses two build jobs and no LTO
 or debug symbols to limit memory usage; application profiles remain unchanged.
 Tool and Cargo dependency downloads require network.
 
+CI caches Cargo registry/Git downloads and the installed cargo-leptos tool.
+The key includes the installed Arch package versions, Cargo.lock, the recipe,
+and the workflow, so the tool is not reused across incompatible rolling system
+updates. Cached files are restored before assigning ownership to the builder.
+Application build outputs, generated assets, and final packages are not cached;
+each run still rebuilds the suite from its selected sources. The first run for
+a new cache key populates the cache rather than accelerating that same run.
+
 To prepare a recipe manually, from a committed checkout with full history:
 
 ```bash
@@ -56,6 +64,14 @@ dependencies. As a non-root user, install/default Rust 1.95.0 with
   branch; unrelated branches are not promised a global chronological order.
 
 Only stable and `-beta.N` manifest versions are supported. `pkgrel` is 1.
+
+CI distributes the file as `logmancer-0.5.0-beta.2-linux-arch.pkg.tar.zst` for
+both development and release builds, matching the platform-oriented portable
+filename convention. This renaming does not change the internal version:
+pacman still displays the commit-identifying development version above, or
+the release version when built from a tag. Manual makepkg builds retain the
+standard Arch filename; prepare_ci.sh also writes `distribution-name.txt`
+with the filename used by CI.
 
 ## Installation
 

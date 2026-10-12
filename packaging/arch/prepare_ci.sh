@@ -57,4 +57,5 @@ checksum=${checksum%% *}
 git -C "$checkout" show "$commit:packaging/arch/PKGBUILD" |
   sed -e "s/^pkgver=.*/pkgver=$pkgver/" \
       -e "s/^sha256sums=.*/sha256sums=('$checksum')/" > "$output/PKGBUILD"
+printf 'logmancer-%s-linux-arch.pkg.tar.zst\n' "$version" > "$output/distribution-name.txt"
 printf 'Prepared %s from %s in %s\n' "$pkgver" "$commit" "$output"
