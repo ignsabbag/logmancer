@@ -32,10 +32,17 @@ jobs:
         with:
           shared-key: package-windows
       - name: Install packaging tools
-        shell: bash
+        # Git Bash prepends its incomplete Perl distribution to PATH. Use the
+        # native runner environment for vendored OpenSSL in cargo-leptos.
+        shell: pwsh
         run: |
+          Get-Command perl | Select-Object -ExpandProperty Source
+          perl -MLocale::Maketext::Simple -MIPC::Cmd -e 'print qq(Perl OpenSSL prerequisites OK\n)'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo install cargo-leptos --version '=0.3.10' --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo install tauri-cli --version '^2' --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build suite and assets
         shell: bash
         env:
