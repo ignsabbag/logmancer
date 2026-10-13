@@ -119,7 +119,8 @@ cargo clean --profile dev
 
 ### Changelog
 - Update `CHANGELOG.md` before committing relevant user-facing, release, packaging, workflow, or behavior changes.
-- Keep changelog entries concise and grouped under `[Unreleased]` during development or the active release section when preparing a tag.
+- Keep changelog entries concise and grouped under `[Unreleased]` during development and beta releases. Move them into a dated release section only when preparing a stable release; keep the `[Unreleased]` comparison based on the last stable version until then.
+- Beta version bumps may leave `CHANGELOG.md` unchanged when all relevant changes are already under `[Unreleased]`; explain this decision in the commit/PR summary.
 - If a change is purely internal and not release-note-worthy, leave `CHANGELOG.md` unchanged and call that out in the commit/PR summary.
 
 ### Architecture Decisions
@@ -178,5 +179,7 @@ cargo tauri dev
 
 ## Project Skills
 
+- `skills/create-issue/SKILL.md` — Use to draft or create GitHub issues in English, check duplicates, and select existing `type:*` and `area:*` labels. Publication and implementation approval are separate authorizations; do not change existing issues without an explicit request.
+- `skills/prepare-release/SKILL.md` — Use for beta and stable releases, version bumps, and release tags. Follow its changelog policy, validate before tagging, and respect branch protections through PRs without bypassing required checks. Local-only preparation does not authorize commits or publication.
 - `skills/rust-quality-gate/SKILL.md` — OpenCode-compatible skill for commit/PR preparation. It requires `cargo fmt` and `cargo clippy --workspace -- -D warnings` before creating a commit or PR.
 - The Rust quality gate skill also requires an explicit `CHANGELOG.md` decision before committing relevant user-facing, release, packaging, workflow, or behavior changes.
