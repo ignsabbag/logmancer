@@ -18,6 +18,7 @@ Use this skill before creating a commit, opening a PR, or preparing changes for 
 - If `cargo fmt` changes files, include those formatting changes in the same reviewable work unit.
 - Do not run `cargo build`; this project explicitly avoids builds during agent changes unless the user asks.
 - Update `CHANGELOG.md` before committing any relevant user-facing, release, packaging, workflow, or behavior change.
+- Exception: a beta version bump may leave `CHANGELOG.md` unchanged when its relevant changes are already under `[Unreleased]`. Explain this decision in the commit/PR summary and follow `skills/prepare-release/SKILL.md`; only stable releases move entries into a dated version section.
 - Keep Conventional Commit style and never add AI attribution trailers.
 
 ## Decision Gates
@@ -28,6 +29,7 @@ Use this skill before creating a commit, opening a PR, or preparing changes for 
 | `cargo fmt` fails | Stop, report the formatter error, and do not commit or open a PR |
 | `cargo clippy --workspace -- -D warnings` fails | Fix warnings if in scope; otherwise stop and report blockers |
 | Change affects users, releases, packaging, CI behavior, or documented behavior | Update `CHANGELOG.md` in the same work unit before committing |
+| Beta version bump with all relevant entries already under `[Unreleased]` | Keep the changelog unchanged and explain the beta policy in the commit/PR summary |
 | Change is purely internal and not notable for release notes | Leave `CHANGELOG.md` unchanged and mention why in the commit/PR summary |
 | User asks to skip gates | Push back and require explicit confirmation before bypassing |
 
@@ -35,6 +37,7 @@ Use this skill before creating a commit, opening a PR, or preparing changes for 
 
 1. Decide whether the change is changelog-worthy before staging the commit.
 2. If it is notable, update `CHANGELOG.md` under `[Unreleased]` or the active release section.
+   For releases, follow `skills/prepare-release/SKILL.md`: beta entries stay under `[Unreleased]`, with an explicit unchanged decision when already complete; stable entries move into a dated section.
 3. Run `cargo fmt` from the repository root.
 4. Run `cargo clippy --workspace -- -D warnings` from the repository root.
 5. Inspect the resulting working tree before committing or preparing a PR.

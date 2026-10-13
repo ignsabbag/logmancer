@@ -8,6 +8,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Added
 
+- Repository skill for drafting and creating English GitHub issues with duplicate checks, verifiable acceptance criteria, and consistent type and area labels.
 - Development and release workflows now generate source-built Arch Linux suite packages (`.pkg.tar.zst`) from the exact checkout.
 - Web favicons and Desktop app icons now use Logmancer's illustrated book artwork, with simplified artwork for small sizes.
 - Desktop, standalone Web, and TUI now write daily runtime logs to per-user directories on Linux and Windows, retain up to seven files per variant, and mirror errors to an attached terminal.
