@@ -80,7 +80,7 @@ policy above and inspect the final diff.
 - Create an annotated tag on the verified release commit: `git tag -a vVERSION COMMIT -m "Logmancer vVERSION"`.
 - Push only the intended tag: `git push origin vVERSION`.
 - Find the Release workflow run for that exact tag and commit, then monitor it with `gh run watch RUN_ID --exit-status`.
-- The current workflow packages Linux and Windows portable ZIPs, a Linux DEB, and a Windows NSIS installer. It marks `vX.Y.Z-beta.N` releases as prereleases.
+- The current workflow packages Linux and Windows portable ZIPs, a Linux DEB, an Arch `.pkg.tar.zst`, and a Windows NSIS installer inside a setup ZIP (no standalone EXE). Public filenames use `logmancer-VERSION-PLATFORM-x86_64`, with `-portable` or `-setup` for ZIPs. It marks `vX.Y.Z-beta.N` releases as prereleases.
 - After the workflow succeeds, verify the GitHub release's tag, prerelease flag, notes, and all expected assets. Stable releases must not be marked as prereleases.
 - If packaging or publishing fails, report the failing job and logs. Do not retag, overwrite assets, rerun publication, or introduce fixes without authorization.
 - Clearly distinguish a pushed tag or running workflow from a successfully published release.

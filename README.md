@@ -5,7 +5,7 @@
 
 A lightweight, cross-platform log viewer written in Rust. Designed for efficiency and speed, Logmancer reads directly from disk and handles very large log files with ease.
 
-Current development version: `0.5.0-beta.3`.
+Current development version: `0.5.0`.
 
 ---
 
@@ -88,9 +88,21 @@ Logmancer is structured as a multi-crate workspace:
 
 The Windows build workflow also produces a per-user NSIS installer artifact.
 It installs Desktop, the `logmancer` launcher, standalone Web and TUI binaries,
-and the generated `site/` resources in one directory. Release publication of
-that installer is tracked separately. The installer registers `.log` files with
+and the generated `site/` resources in one directory. The installer registers `.log` files with
 Desktop, so Logmancer is available in Windows "Open with".
+
+Release downloads use these filenames (`{version}` is the package version):
+
+- `logmancer-{version}-windows-x86_64-portable.zip`
+- `logmancer-{version}-windows-x86_64-setup.zip`
+- `logmancer-{version}-linux-x86_64-portable.zip`
+- `logmancer-{version}-linux-x86_64.deb`
+- `logmancer-{version}-linux-x86_64.pkg.tar.zst`
+
+Extract the Windows setup ZIP and run its single
+`logmancer-{version}-windows-x86_64-setup.exe` installer. The application is
+unsigned; Windows may still display SmartScreen warnings after extraction.
+Package metadata retains native architecture names (for example, Debian's `amd64`).
 
 ---
 

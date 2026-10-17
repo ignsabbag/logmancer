@@ -21,7 +21,7 @@ printf 'untracked\n' > "$repository/local-only.txt"
 printf 'dirty\n' >> "$repository/logmancer-desktop/Cargo.toml"
 bash "$root/packaging/arch/prepare_ci.sh" "$repository" "$temporary/development"
 grep -Fx "pkgver=0.5.0beta2.r1.g${sha:0:12}" "$temporary/development/PKGBUILD"
-grep -Fx 'logmancer-0.5.0-beta.2-linux-arch.pkg.tar.zst' "$temporary/development/distribution-name.txt"
+grep -Fx 'logmancer-0.5.0-beta.2-linux-x86_64.pkg.tar.zst' "$temporary/development/distribution-name.txt"
 if tar -tzf "$temporary/development/logmancer-source.tar.gz" | grep -q local-only; then
   echo 'Untracked file leaked into sources' >&2
   exit 1
@@ -59,7 +59,7 @@ bash "$root/packaging/arch/prepare_ci.sh" "$repository" "$temporary/stable-devel
 grep -Fx "pkgver=0.5.1alpha0.r2.g${sha:0:12}" "$temporary/stable-development/PKGBUILD"
 bash "$root/packaging/arch/prepare_ci.sh" "$repository" "$temporary/stable-release" v0.5.0
 grep -Fx 'pkgver=0.5.0' "$temporary/stable-release/PKGBUILD"
-grep -Fx 'logmancer-0.5.0-linux-arch.pkg.tar.zst' "$temporary/stable-release/distribution-name.txt"
+grep -Fx 'logmancer-0.5.0-linux-x86_64.pkg.tar.zst' "$temporary/stable-release/distribution-name.txt"
 cmp "$temporary/stable-development/distribution-name.txt" "$temporary/stable-release/distribution-name.txt"
 if bash "$root/packaging/arch/prepare_ci.sh" "$repository" "$temporary/stale-tag" v0.5.0-beta.2; then
   echo 'Accepted a tag from another commit' >&2

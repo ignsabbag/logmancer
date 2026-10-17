@@ -52,6 +52,14 @@ jobs:
         run: |
           chmod +x packaging/debian/bin/*
           cargo tauri build --target x86_64-unknown-linux-gnu --bundles deb --config logmancer-desktop/tauri.deb.bundle.conf.json
+      - name: Normalize DEB filename
+        run: |
+          set -euo pipefail
+          version=$(sed -nE 's/^version = "([^"]+)"$/\1/p' logmancer-desktop/Cargo.toml)
+          packages=(target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb)
+          [[ ${#packages[@]} == 1 && -f "${packages[0]}" ]]
+          mkdir -p dist
+          cp "${packages[0]}" "dist/logmancer-$version-linux-x86_64.deb"
       - name: Package portable suite
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -66,7 +74,7 @@ jobs:
           cp packaging/portable/README.txt packaging/portable/linux/run-web.sh packaging/portable/linux/run-desktop.sh "$package_root/"
           chmod +x "$package_root/"*.sh
           if [[ -n "$RELEASE_TAG" ]]; then
-            archive="logmancer-${RELEASE_TAG#v}-linux-portable.zip"
+            archive="logmancer-${RELEASE_TAG#v}-linux-x86_64-portable.zip"
             (cd "$package_root" && zip -r "../$archive" .)
           fi
       - name: Upload development portable
@@ -87,5 +95,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: logmancer-package-linux-deb
-          path: target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+          path: dist/*-linux-x86_64.deb
           if-no-files-found: error

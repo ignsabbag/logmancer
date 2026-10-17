@@ -13,7 +13,9 @@ Build runs the existing tests and clippy before packaging that same SHA.
 Manual artifacts are not removed by automatic main-artifact cleanup.
 
 Release packages the triggering tag's commit and publishes portable ZIPs,
-DEB, NSIS, and `.pkg.tar.zst` assets only after all packaging jobs succeed.
+DEB, zipped NSIS, and `.pkg.tar.zst` assets only after all packaging jobs succeed.
+Public filenames include the operating system and `x86_64` architecture; see
+the release download list in `README.md`. No standalone installer EXE is published.
 
 ## Arch source selection
 
@@ -65,7 +67,7 @@ dependencies. As a non-root user, install/default Rust 1.95.0 with
 
 Only stable and `-beta.N` manifest versions are supported. `pkgrel` is 1.
 
-CI distributes the file as `logmancer-0.5.0-beta.2-linux-arch.pkg.tar.zst` for
+CI distributes the file as `logmancer-0.5.0-beta.2-linux-x86_64.pkg.tar.zst` for
 both development and release builds, matching the platform-oriented portable
 filename convention. This renaming does not change the internal version:
 pacman still displays the commit-identifying development version above, or
