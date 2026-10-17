@@ -6,6 +6,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-17
+
 ### Added
 
 - Linux packages for Debian-based distributions (`.deb`) and Arch Linux (`.pkg.tar.zst`), installing the complete Logmancer suite.
@@ -131,7 +133,8 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Web follow mode works, but does not yet expose a clear visual indicator.
 - Search, visual rules, structured parsing, and multi-file workspace improvements are planned but not part of `0.1.0`.
 
-[Unreleased]: https://github.com/ignsabbag/logmancer/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ignsabbag/logmancer/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/ignsabbag/logmancer/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/ignsabbag/logmancer/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ignsabbag/logmancer/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ignsabbag/logmancer/compare/v0.2.0...v0.3.0
