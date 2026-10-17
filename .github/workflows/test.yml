@@ -104,6 +104,11 @@ jobs:
         if: runner.os == 'Linux'
         run: bash packaging/arch/tests/prepare_ci.sh
 
+      - name: Test Windows installer packaging
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./packaging/windows/tests/package-installer.ps1
+
       - name: Run clippy
         if: matrix.clippy
         run: cargo clippy --workspace -- -D warnings

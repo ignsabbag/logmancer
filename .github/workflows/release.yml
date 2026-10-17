@@ -48,7 +48,7 @@ jobs:
           if [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
             release_flags+=(--prerelease)
           fi
-          assets=(dist/*.zip dist/*.deb dist/*.exe dist/*.pkg.tar.zst)
+          assets=(dist/*.zip dist/*.deb dist/*.pkg.tar.zst)
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             gh release upload "$TAG_NAME" "${assets[@]}" --clobber
             if ((${#release_flags[@]})); then

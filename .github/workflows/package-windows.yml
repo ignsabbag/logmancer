@@ -78,8 +78,13 @@ jobs:
           Copy-Item "packaging/portable/windows/run-desktop.cmd" "$packageRoot/"
           if ($env:RELEASE_TAG) {
             $version = $env:RELEASE_TAG -replace '^v', ''
-            Compress-Archive -Path "$packageRoot/*" -DestinationPath "dist/logmancer-$version-windows-portable.zip" -Force
+            Compress-Archive -Path "$packageRoot/*" -DestinationPath "dist/logmancer-$version-windows-x86_64-portable.zip" -Force
           }
+      - name: Package NSIS installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path logmancer-desktop/Cargo.toml -Pattern '^version = "([^"]+)"$').Matches[0].Groups[1].Value
+          ./packaging/windows/package-installer.ps1 -Version $version -InstallerDirectory target/x86_64-pc-windows-msvc/release/bundle/nsis -OutputDirectory dist
       - name: Upload development portable
         if: inputs.release_tag == ''
         uses: actions/upload-artifact@v7
@@ -92,11 +97,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: logmancer-portable-windows
-          path: dist/*.zip
+          path: dist/*-windows-x86_64-portable.zip
           if-no-files-found: error
       - name: Upload NSIS
         uses: actions/upload-artifact@v7
         with:
           name: logmancer-installer-windows
-          path: target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          path: dist/*-windows-x86_64-setup.zip
           if-no-files-found: error
