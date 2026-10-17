@@ -8,38 +8,27 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ### Added
 
-- Repository skill for drafting and creating English GitHub issues with duplicate checks, verifiable acceptance criteria, and consistent type and area labels.
-- Development and release workflows now generate source-built Arch Linux suite packages (`.pkg.tar.zst`) from the exact checkout.
-- Web favicons and Desktop app icons now use Logmancer's illustrated book artwork, with simplified artwork for small sizes.
-- Desktop, standalone Web, and TUI now write daily runtime logs to per-user directories on Linux and Windows, retain up to seven files per variant, and mirror errors to an attached terminal.
-
-- Linux releases now include a DEB package that installs the complete suite, generated web assets, desktop-menu entry, and public commands.
-- Windows build artifacts now include a per-user NSIS installer containing Desktop, the launcher, standalone Web and TUI executables, and generated `site/` resources; the installer also registers `.log` files for opening with Logmancer Desktop.
-- Logmancer now ships a public `logmancer` launcher that defaults to Desktop on Windows and selects Desktop or TUI from the current Linux session; Web and all explicit variant commands remain available.
-- Standalone Web now accepts `--bind` and `--file-root`, with CLI values taking precedence over environment variables.
-- The core registry now retains idle readers using a 30-minute TTL and a soft 256 MiB index budget, safely removes them after active operations finish, releases their associated resources, and transparently restores evicted persisted readers on access.
+- Linux packages for Debian-based distributions (`.deb`) and Arch Linux (`.pkg.tar.zst`), installing the complete Logmancer suite.
+- A per-user Windows installer for the complete suite, including `.log` file associations.
+- A public `logmancer` launcher that defaults to Desktop on Windows and selects Desktop or TUI according to the Linux session, with explicit commands for all variants.
+- Standalone Web options `--bind` and `--file-root`, taking precedence over environment variables.
+- Daily runtime logs for Desktop, Web, and TUI on Linux and Windows, retaining up to seven files per variant and providing configuration-source diagnostics without logging parameter values.
 
 ### Changed
 
-- Release downloads now use consistent lowercase platform-and-architecture filenames; the Windows NSIS installer is distributed inside a setup ZIP instead of as a standalone EXE.
-- Arch workflow artifacts now use platform-oriented filenames while preserving internal pacman versions, and cache Cargo downloads and the pinned packaging tool for compatible build environments.
-- Linux, Windows, and Arch packaging now use reusable workflows; manual Build runs replace desktop diagnostics, run tests and clippy, and support platform selection without pruning manual artifacts.
-- The viewer now has a compact 32-pixel toolbar with a Logmancer icon, smaller controls, and the unused actions button hidden; the filter panel starts at 20% of the viewer height.
-- Web and Desktop now use a shared graphite-and-blue dark palette with centralized CSS color variables; previous light colors remain documented in the stylesheet.
-- Daily runtime logs now place the date before the file extension; existing logs in the previous format are left untouched.
-- The launcher, installed Desktop, and standalone Web now resolve bundled Leptos runtime defaults and generated `site/` assets without requiring `LEPTOS_SITE_ROOT`; explicit overrides remain authoritative, and Desktop bundle assets are generated only during packaging.
-- Runtime logs now identify each resolved parameter's source without logging its value.
+- Web and Desktop now share a graphite-and-blue dark theme, updated Logmancer artwork, and a compact viewer toolbar; the filter panel initially occupies 20% of the viewer height.
+- Idle file readers are now eligible for eviction after 30 minutes of inactivity, or after 10 minutes under a soft 256 MiB index-memory budget; active operations remain protected and persisted readers reopen transparently.
+- Release downloads now use consistent lowercase platform-and-architecture filenames; the Windows installer is distributed inside a setup ZIP instead of as a standalone EXE.
+- Manual builds now support selecting Linux, Windows, or Arch packaging.
 
 ### Fixed
 
-- Windows packaging installs build tools through the native PowerShell environment instead of Git Bash's incomplete Perl, avoiding vendored OpenSSL configuration failures.
-- Arch packaging now trusts the mounted workflow checkout explicitly, avoiding Git ownership rejection inside the container.
-- Build, Release, and desktop diagnostics now pin cargo-leptos to 0.3.10 with locked dependencies, avoiding installation failures from newer tool dependencies that require Rust 1.96.
-- Windows visual-rules updates now sync their backup through a writable handle, avoiding access-denied failures before replacement; Unix backups retain their read-only sync behavior.
-- Visual-rules persistence failures now include operation and path diagnostics in runtime logs while API responses remain safe and actionable.
-- When launched from Explorer, the Windows Desktop launcher now starts Desktop before closing its own console, preserving startup errors while terminals used to launch Logmancer remain attached.
-- Packaged Desktop and Web now accept complete SSR asset trees without requiring a static `index.html`.
-- Persisted reader restoration now reports actionable missing-file and authorization failures instead of treating them as unopened files.
+- Installed Desktop and Web now resolve bundled assets and runtime defaults without requiring `LEPTOS_SITE_ROOT` or a static `index.html`; explicit configuration overrides remain supported.
+- Windows visual-rules updates no longer fail with access-denied errors while syncing backups.
+- Visual-rules persistence failures now provide detailed runtime diagnostics while keeping API error responses safe and actionable.
+- The Windows launcher now preserves Desktop startup errors when launched from Explorer without closing terminals used to start Logmancer.
+- Reopening persisted files now reports actionable missing-file and authorization errors.
+- Linux, Windows, and Arch packaging workflows now handle build-tool compatibility and checkout permissions reliably.
 
 ## [0.4.1] - 2026-08-28
 
