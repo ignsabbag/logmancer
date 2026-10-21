@@ -6,6 +6,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Web and Desktop viewer app bars now display readable Windows extended-length drive and UNC paths.
+
 ## [0.5.0] - 2026-10-17
 
 ### Added

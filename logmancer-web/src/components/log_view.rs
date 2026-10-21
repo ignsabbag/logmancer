@@ -65,8 +65,26 @@ fn is_visual_rules_target(target: Option<&leptos::web_sys::HtmlElement>) -> bool
 #[cfg_attr(not(any(target_arch = "wasm32", test)), allow(dead_code))]
 fn app_bar_path(file_info: Option<&logmancer_core::FileInfo>, fallback: &str) -> String {
     file_info
-        .map(|file_info| file_info.path.clone())
+        .map(|file_info| format_extended_windows_path(&file_info.path))
         .unwrap_or_else(|| fallback.to_string())
+}
+
+fn format_extended_windows_path(path: &str) -> String {
+    const EXTENDED_PREFIX: &str = r"\\?\";
+    const EXTENDED_UNC_PREFIX: &str = r"\\?\UNC\";
+
+    if let Some(unc_path) = path.strip_prefix(EXTENDED_UNC_PREFIX) {
+        return format!(r"\\{unc_path}");
+    }
+
+    if let Some(drive_path) = path.strip_prefix(EXTENDED_PREFIX) {
+        let bytes = drive_path.as_bytes();
+        if matches!(bytes, [drive, b':', b'\\', ..] if drive.is_ascii_alphabetic()) {
+            return drive_path.to_string();
+        }
+    }
+
+    path.to_string()
 }
 
 fn next_refresh_generation(current: u64) -> u64 {
@@ -378,6 +396,56 @@ mod tests {
             app_bar_path(Some(&file_info), "file-id"),
             "/var/log/service.log"
         );
+        assert_eq!(app_bar_path(None, "file-id"), "file-id");
+    }
+
+    #[test]
+    fn app_bar_path_formats_extended_windows_drive_paths_without_mutating_file_info() {
+        let file_info = FileInfo {
+            path: r"\\?\C:\Users\user\Downloads\example.sql".to_string(),
+            total_lines: 12,
+            indexing_progress: 1.0,
+        };
+
+        assert_eq!(
+            app_bar_path(Some(&file_info), "file-id"),
+            r"C:\Users\user\Downloads\example.sql"
+        );
+        assert_eq!(file_info.path, r"\\?\C:\Users\user\Downloads\example.sql");
+    }
+
+    #[test]
+    fn app_bar_path_formats_extended_windows_unc_paths() {
+        let file_info = FileInfo {
+            path: r"\\?\UNC\server\share\example.sql".to_string(),
+            total_lines: 12,
+            indexing_progress: 1.0,
+        };
+
+        assert_eq!(
+            app_bar_path(Some(&file_info), "file-id"),
+            r"\\server\share\example.sql"
+        );
+    }
+
+    #[test]
+    fn app_bar_path_leaves_non_extended_paths_and_fallback_unchanged() {
+        for path in [
+            r"C:\Users\user\Downloads\example.sql",
+            r"\\server\share\example.sql",
+            "/var/log/service.log",
+            r"\\?\Volume{1234-5678}\example.sql",
+            r"\\?\C:relative\example.sql",
+        ] {
+            let file_info = FileInfo {
+                path: path.to_string(),
+                total_lines: 12,
+                indexing_progress: 1.0,
+            };
+
+            assert_eq!(app_bar_path(Some(&file_info), "file-id"), path);
+        }
+
         assert_eq!(app_bar_path(None, "file-id"), "file-id");
     }
 
