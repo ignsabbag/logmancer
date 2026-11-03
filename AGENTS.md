@@ -124,10 +124,12 @@ cargo clean --profile dev
 - If a change is purely internal and not release-note-worthy, leave `CHANGELOG.md` unchanged and call that out in the commit/PR summary.
 
 ### Architecture Decisions
-- Accepted architectural decisions are documented in `docs/adr/`.
-- Before changing cross-cutting behavior, identify and read the relevant ADRs. This includes registry lifecycle, file opening and authorization, persistence, concurrency and workers, server resource policies, and platform-wide behavior.
-- Do not read every ADR by default. List or search `docs/adr/` by topic, then read only the relevant decision records.
-- Do not rewrite an accepted ADR to change its historical decision. Create a new ADR that references or supersedes it when making a new architectural decision.
+- At the start of every task, read `docs/adr/README.md`, the architectural decision index and workflow.
+- Before proposing or changing behavior covered by an ADR, read the full relevant records and any related ADRs needed to understand their constraints. Do not read every ADR by default.
+- Accepted ADRs are current architectural constraints. Proposed ADRs are discussion context, not approved decisions; superseded ADRs are historical context.
+- If a solution would contradict an accepted ADR, identify the conflict and agree on a new decision before implementing it. Agents must not accept proposed ADRs without explicit approval.
+- Do not rewrite an accepted ADR's historical decision. Create a new ADR that references or supersedes it; only status and relationship metadata may be updated to record supersession.
+- When adding an ADR or changing its status or relationships, update `docs/adr/README.md` in the same change.
 
 ---
 
